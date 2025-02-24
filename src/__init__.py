@@ -1,4 +1,4 @@
-from Helper import Helper
-from TorNet import TorNet
+from .Helper import Helper
+from .TorNet import TorNet
 
-__all__ = [Helper, TorNet]
+__all__ = ["Helper", "TorNet"]
