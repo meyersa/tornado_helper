@@ -4,11 +4,14 @@ import tempfile
 import os
 import subprocess
 import shutil
+import zipfile
+import tarfile
+from tqdm import tqdm
 from typing import List, Optional
 from b2sdk.v2 import InMemoryAccountInfo, B2Api, AuthInfoCache, Bucket
+from urllib.parse import urlparse
 
 logging.basicConfig(level=logging.INFO)
-
 
 class Helper:
     """
@@ -111,59 +114,89 @@ class Helper:
             except OSError as e:
                 logging.warning(f"Failed to delete file '{file}': {e}")
 
-    def download(self, links: List[str], bucket: str = None, output_dir: str = None) -> bool:
+    def unzip(self, files: List[str], output_dir: str) -> List[str]:
         """
-        Downloads files from provided URLs using aria2c.
+        Extracts files if they are .zip, .tar.gz, or .tgz.
+        Wrapped in tqdm for progress tracking.
 
         Args:
-            links (List[str]): URLs to download files from.
-            bucket: Str name of bucket to download from.
-            output_dir: Directory to output to, optional. 
+            files (List[str]): List of file paths to extract.
+            output_dir (str): Directory to extract files to.
 
-        Returns: 
-            bool: If successful
-
-        Raises:
-            subprocess.CalledProcessError: If the download process fails.
-            Exception: For other unexpected errors during download.
+        Returns:
+            List[str]: List of extracted file paths.
         """
-        temp_file: Optional[tempfile.NamedTemporaryFile] = None
+        extracted_files = []
+        with tqdm(total=len(files), desc="Extracting", unit="file") as pbar:
+            for file_path in files:
+                try:
+                    if file_path.endswith('.zip'):
+                        with zipfile.ZipFile(file_path, 'r') as zip_ref:
+                            zip_ref.extractall(output_dir)
+                            extracted_files.extend([os.path.join(output_dir, name) for name in zip_ref.namelist()])
+                        os.remove(file_path)
+                        logging.info(f"Extracted and deleted: {file_path}")
+                    elif file_path.endswith(('.tar.gz', '.tgz')):
+                        with tarfile.open(file_path, 'r:gz') as tar_ref:
+                            tar_ref.extractall(output_dir)
+                            extracted_files.extend([os.path.join(output_dir, member.name)
+                                                    for member in tar_ref.getmembers() if member.isfile()])
+                        os.remove(file_path)
+                        logging.info(f"Extracted and deleted: {file_path}")
+                    else:
+                        extracted_files.append(file_path)
+                except Exception as e:
+                    logging.error(f"Failed to extract {file_path}: {e}")
+                pbar.update(1)
+        
+        return extracted_files
 
+    def download(self, links: List[str], bucket: str = None, output_dir: str = None, unzip: bool = True) -> List[str]:
+        """
+        Downloads files from provided URLs using aria2c with TQDM progress,
+        extracts archives (.zip, .tar.gz, .tgz) if needed, and returns file paths.
+        """
+        temp_file = None
         self._check_dependency("aria2c")
-
-        # If bucket convert to S3 URL
-        if bucket: 
+        
+        if bucket:
             links = [f"{self.__DEFAULT_PROXY_URL}/file/{bucket}/{link}" for link in links]
-
+        
         try:
-            # Write download links to a temporary file
-
             temp_file = tempfile.NamedTemporaryFile(delete=False, mode="w")
             temp_file.writelines(link + "\n" for link in links)
             temp_file.close()
-
             logging.debug(f"Temporary link file created at: {temp_file.name}")
-
-            # Execute download command
-            logging.info(f"Initiating downloads for: {', '.join(links)}")
-            command = ["aria2c", "-j", "3", "-x",
-                       "16", "-s", "16", "-i", temp_file.name]
             
-            if output_dir: 
+            command = ["aria2c", "-j", "3", "-x", "16", "-s", "16", "-i", temp_file.name]
+            if output_dir:
                 command.extend(["-d", output_dir])
-
-            logging.debug(f'Running download with options {command}')
-            subprocess.run(command, check=True)
-            logging.info("Downloads completed successfully.")
-
+            logging.debug(f"Running download with options {command}")
+            
+            with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True) as process:
+                pbar = tqdm(total=len(links), desc="Downloading", unit="file")
+                for line in process.stdout:
+                    logging.debug(line.strip())
+                    if "Download complete:" in line:
+                        pbar.update(1)
+                process.wait()
+                pbar.close()
+            
             os.remove(temp_file.name)
             logging.debug(f"Temporary file '{temp_file.name}' deleted.")
+            
+            download_dir = output_dir if output_dir else os.getcwd()
+            downloaded_files = [os.path.join(download_dir, os.path.basename(urlparse(link).path)) for link in links]
 
-            return True 
+            logging.info("Downloads and extraction completed successfully.")
+
+            if unzip:
+                return self.unzip(downloaded_files, download_dir)
+            
+            return downloaded_files
         
         except subprocess.CalledProcessError as e:
-            logging.error(
-                f"aria2c failed with exit status {e.returncode}: {e}")
+            logging.error(f"aria2c failed with exit status {e.returncode}: {e}")
             raise
         except Exception as e:
             logging.error(f"Unexpected error during download: {e}")
