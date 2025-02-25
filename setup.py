@@ -5,7 +5,6 @@ setup(
     version="0.1.0",
     packages=find_packages(),
     install_requires=[
-        "aria2c",
         "requests",
         "b2sdk",
         "dotenv"
