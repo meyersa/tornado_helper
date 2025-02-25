@@ -1,3 +1,4 @@
 requests
 b2sdk
 dotenv
+aria2c

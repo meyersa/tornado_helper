@@ -7,7 +7,8 @@ setup(
     install_requires=[
         "requests",
         "b2sdk",
-        "dotenv"
+        "dotenv",
+        "aria2"
     ],
     author="August Meyers",
     description="A helper package for uploading and downloading Tornado training data",
