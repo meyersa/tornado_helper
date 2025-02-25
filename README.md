@@ -26,4 +26,6 @@ from tornado_helper import TorNet
 TorNet.download()
 ```
 
-Will then download TorNet's files to your computer at a specified directory
+Will then download TorNet's files to your computer at a specified directory. 
+
+See the example.ipynb file for some additional context.
