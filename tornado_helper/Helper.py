@@ -15,26 +15,26 @@ class Helper:
     A helper class providing default methods to upload/download files using Backblaze B2 and aria2c.
 
     Attributes:
-        DATA_DIR (Path): Path to the directory for storing downloaded data.
-        TEMP_DIR (Path): Path to a temporary directory for intermediate file handling.
+        __DATA_DIR (Path): Path to the directory for storing downloaded data.
+        __TEMP_DIR (Path): Path to a temporary directory for intermediate file handling.
     """
 
-    DEFAULT_PROXY_URL = "https://bbproxy.meyerstk.com"
-    DEFAULT_DATA_DIR = "./data"
+    __DEFAULT_PROXY_URL = "https://bbproxy.meyerstk.com"
+    __DEFAULT___DATA_DIR = "./data"
 
-    def __init__(self, data_dir: Optional[str] = None) -> None:
+    def __init__(self, __DATA_DIR: Optional[str] = None) -> None:
         """
         Initializes the Helper instance by setting up data and temporary directories.
 
         Args:
-            data_dir (Optional[str]): Custom directory to store data. Defaults to './data'.
+            __DATA_DIR (Optional[str]): Custom directory to store data. Defaults to './data'.
         """
-        self.DATA_DIR = Path(data_dir or self.DEFAULT_DATA_DIR)
-        self.DATA_DIR.mkdir(parents=True, exist_ok=True)
+        self.__DATA_DIR = Path(__DATA_DIR or self.__DEFAULT___DATA_DIR)
+        self.__DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-        self.TEMP_DIR = Path(tempfile.mkdtemp())
-        logging.info(f"Data directory set at: {self.DATA_DIR}")
-        logging.debug(f"Temporary directory created at: {self.TEMP_DIR}")
+        self.__TEMP_DIR = Path(tempfile.mkdtemp())
+        logging.info(f"Data directory set at: {self.__DATA_DIR}")
+        logging.debug(f"Temporary directory created at: {self.__TEMP_DIR}")
 
     def _check_dependency(self, dependency: str) -> bool:
         """
@@ -133,7 +133,7 @@ class Helper:
 
         # If bucket convert to S3 URL
         if bucket: 
-            links = [f"{self.DEFAULT_PROXY_URL}/file/{bucket}/{link}" for link in links]
+            links = [f"{self.__DEFAULT_PROXY_URL}/file/{bucket}/{link}" for link in links]
 
         try:
             # Write download links to a temporary file
