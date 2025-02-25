@@ -32,7 +32,7 @@ jobs:
       - test
     environment:
       name: pypi
-      url: https://pypi.org/p/tornado-helper
+      url: https://pypi.org/p/tornado_helper
     permissions:
       id-token: write 
     steps:

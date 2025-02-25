@@ -133,7 +133,7 @@ class Helper:
 
         # If bucket convert to S3 URL
         if bucket: 
-            links = [f"https://{self.DEFAULT_PROXY_URL}/file/{bucket}/{link}" for link in links]
+            links = [f"{self.DEFAULT_PROXY_URL}/file/{bucket}/{link}" for link in links]
 
         try:
             # Write download links to a temporary file

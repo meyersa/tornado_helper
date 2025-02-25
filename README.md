@@ -2,7 +2,7 @@
 
 Based on a loader from the [Tornado prediction](https://github.com/meyersa/tornado-prediction) project, downloads learning files from S3. 
 
-[![Build Package and publish to PyPi](https://github.com/meyersa/tornado-helper/actions/workflows/ci.yml/badge.svg)](https://github.com/meyersa/tornado-helper/actions/workflows/ci.yml)&nbsp;![PyPI - Version](https://img.shields.io/pypi/v/tornado-helper)
+[![Build Package and publish to PyPi](https://github.com/meyersa/tornado_helper/actions/workflows/ci.yml/badge.svg)](https://github.com/meyersa/tornado_helper/actions/workflows/ci.yml)&nbsp;![PyPI - Version](https://img.shields.io/pypi/v/tornado_helper)
 
 ## Installation 
 
@@ -14,14 +14,14 @@ Ensure Aria2c is installed for downloading, this can be done with your preferred
 
 Then simply install the package with pip
 
-> pip install tornado-helper 
+> pip install tornado_helper 
 
 ## Using
 
 The package can then be used in the project by importing the Helper you need, for example 
 
 ```python
-from tornado-helper import TorNet
+from tornado_helper import TorNet
 
 TorNet.download()
 ```
