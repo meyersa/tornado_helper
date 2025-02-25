@@ -87,7 +87,7 @@ class Helper:
 
             for file in files:
                 logging.info(f"Uploading file '{file}' to bucket '{bucket}'")
-                b2_bucket.upload_local_file(file)
+                b2_bucket.upload_local_file(file, os.path.basename(file))
 
             logging.info("All files uploaded successfully.")
             return True
@@ -111,12 +111,13 @@ class Helper:
             except OSError as e:
                 logging.warning(f"Failed to delete file '{file}': {e}")
 
-    def download(self, links: List[str], output_dir: str = None) -> bool:
+    def download(self, links: List[str], bucket: str = None, output_dir: str = None) -> bool:
         """
         Downloads files from provided URLs using aria2c.
 
         Args:
             links (List[str]): URLs to download files from.
+            bucket: Str name of bucket to download from.
             output_dir: Directory to output to, optional. 
 
         Returns: 
@@ -130,11 +131,17 @@ class Helper:
 
         self._check_dependency("aria2c")
 
+        # If bucket convert to S3 URL
+        if bucket: 
+            links = [f"https://{self.DEFAULT_PROXY_URL}/file/{bucket}/{link}" for link in links]
+
         try:
             # Write download links to a temporary file
 
-            temp_file = tempfile.NamedTemporaryFile(delete=True, mode="w")
+            temp_file = tempfile.NamedTemporaryFile(delete=False, mode="w")
             temp_file.writelines(link + "\n" for link in links)
+            temp_file.close()
+
             logging.debug(f"Temporary link file created at: {temp_file.name}")
 
             # Execute download command
@@ -143,13 +150,13 @@ class Helper:
                        "16", "-s", "16", "-i", temp_file.name]
             
             if output_dir: 
-                command.extend(["-d", Path.joinpath(Path.cwd(), output_dir)])
+                command.extend(["-d", output_dir])
 
             logging.debug(f'Running download with options {command}')
             subprocess.run(command, check=True)
             logging.info("Downloads completed successfully.")
 
-            temp_file.close()
+            os.remove(temp_file.name)
             logging.debug(f"Temporary file '{temp_file.name}' deleted.")
 
             return True 
