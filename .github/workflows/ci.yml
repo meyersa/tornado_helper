@@ -21,7 +21,7 @@ jobs:
 
       - name: Install Aria2c 
         run: sudo apt install aria2 
-        
+
       - name: Run tests
         run: python tests.py
 
@@ -55,5 +55,5 @@ jobs:
       - name: Build a binary wheel and a source tarball
         run: python3 -m build
 
-      - name: Publish distribution 📦 to PyPI
+      - name: Publish distribution
         uses: pypa/gh-action-pypi-publish@release/v1
