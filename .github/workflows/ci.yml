@@ -23,7 +23,7 @@ jobs:
         run: sudo apt install aria2 
 
       - name: Run tests
-        run: python tests.py
+        run: python -m unittest
 
   build:
     name: Build Package
