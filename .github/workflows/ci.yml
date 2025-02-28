@@ -6,6 +6,7 @@ jobs:
   test: 
     name: Test Package 
     runs-on: ubuntu-latest
+    environment: dev
     steps: 
       - uses: actions/checkout@v4
         with:
@@ -19,8 +20,11 @@ jobs:
       - name: Install requirements
         run: pip install -r requirements.txt
 
-      - name: Install Aria2c 
-        run: sudo apt install aria2 
+      - name: Set environmental variables
+        run: |
+          echo "bucket_name=${{ secrets.BUCKET_NAME }}" >> .env
+          echo "application_key_id=${{ secrets.APPLICATION_KEY_ID }}" >> .env
+          echo "application_key=${{ secrets.APPLICATION_KEY }}" >> .env
 
       - name: Run tests
         run: python -m unittest
