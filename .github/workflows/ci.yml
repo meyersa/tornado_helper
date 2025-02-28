@@ -27,7 +27,7 @@ jobs:
           echo "application_key=${{ secrets.APPLICATION_KEY }}" >> .env
 
       - name: Run tests
-        run: python -m unittest
+        run: python tests.py
 
   build:
     name: Build Package
