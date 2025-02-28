@@ -3,44 +3,119 @@ from dotenv import load_dotenv
 import os 
 from tornado_helper import Helper 
 from pathlib import Path 
+import tarfile
+import logging 
+import datetime
+import time 
 
 DATA_DIR = "data"
-TEST_FILE = "test.tar.gz"
-DL_FILE = "test"
-
 class test_helper(unittest.TestCase):
 
-    def setUp(self) -> None:
+    @classmethod
+    def setUpClass(cls) -> None:
+        logging.info("Starting Helper Tests")
+
+        logging.debug("Loading ENVs")
         load_dotenv() 
+        cls.bucket = os.getenv("bucket_name")
+        cls.app_key = os.getenv("application_key")
+        cls.app_key_id = os.getenv("application_key_id")
 
-        self.bucket = os.getenv("bucket_name")
-        self.app_key = os.getenv("application_key")
-        self.app_key_id = os.getenv("application_key_id")
+        logging.debug("Loading Helper class")
+        cls.Helper = Helper()
 
-        self.Helper = Helper()
-
+        # For real time tracking 
+        cls.tID = datetime.datetime.now().second
+        
     def test_instance(self): 
+        logging.info("Testing instance")
+        
         # Should be an instance of the Obj
         self.assertIsInstance(self.Helper, Helper)
 
         # Should also create Data dir
         self.assertTrue(os.path.exists("./data"))
 
-    def test_download(self): 
-        # Download test file from bucket
-        downloads = self.Helper.download([TEST_FILE], bucket=self.bucket, output_dir=DATA_DIR)
+    def test_delete(self): 
+        logging.info("Testing delete method")
 
-        print(downloads)
-        self.assertEqual(len(downloads), 2) # Should be two files, macos metadata:(
-        self.assertTrue(os.path.exists(Path.joinpath(Path.cwd(), DATA_DIR, os.path.basename(downloads[0])))) # Path should exist not
+        logging.debug("Creating test file")
+        test_file = "test.txt"
+        with open(test_file, "w") as f: 
+                f.write("test")        
+                
+        logging.debug("Deleting test file")
+        self.assertTrue(self.Helper._delete(test_file))
+        
+        # Should not exist anymore
+        self.assertTrue(not os.path.exists(test_file))
+
+        logging.debug("Deleting test file (already deleted)")
+        self.assertTrue(not self.Helper._delete(test_file))
+        
+    def test_unzip(self): 
+        logging.info("Testing unzip method")
+
+        logging.debug("Creating a test file")
+        tar_raw = "test.txt"
+        with open(tar_raw, "w") as f: 
+                f.write("test")   
+                
+        logging.debug("Making test file into Tar")
+        tar_zip = "test.tar.gz"
+        with tarfile.open(tar_zip, "w:gz") as tar: 
+            tar.add(tar_raw)
+
+        # Ensure that actually exists 
+        self.assertTrue(os.path.exists(tar_zip))
+
+        logging.debug("Deleting test file")
+        self.Helper._delete(tar_raw)
+        self.assertTrue(not os.path.exists(tar_raw))
+
+        logging.debug("Unzipping file")
+        self.assertEqual(self.Helper._unzip(tar_zip)[0], tar_raw)
+
+        logging.debug("Opening file to check contents")
+        with open(tar_raw) as f: 
+            self.assertEqual(f.readline(), "test")
+
+        logging.debug("Deleting file")
+        self.Helper._delete(tar_raw)
+        self.assertTrue(not os.path.exists(tar_raw))
 
     def test_upload(self): 
-        self.assertTrue(self.Helper.upload([Path.joinpath(Path.cwd(), DATA_DIR, DL_FILE)], self.bucket, self.app_key, self.app_key_id))
+        logging.info("Testing file upload")
+        
+        logging.debug("Creating test files to upload")
+        files = [f"test-1-{self.tID}", f"test-2-{self.tID}", f"test-3-{self.tID}"]
+        for file in files: 
+            with open(file, "w") as f: 
+                f.write("test")
+            
+            # Confirm they exist
+            self.assertTrue(os.path.exists(file))
 
-    def test_delete(self): 
-        self.Helper.delete([Path.joinpath(Path.cwd(), DATA_DIR, DL_FILE)])
-        self.assertTrue(not os.path.exists(Path.joinpath(Path.cwd(), DATA_DIR, DL_FILE)))
+        logging.debug("Uploading test files")
+        self.assertTrue(self.Helper.upload(files, self.bucket, self.app_key, self.app_key_id))
+        
+        logging.debug("Deleting test files")
+        for file in files: 
+            self.Helper._delete(file)
+            self.assertTrue(not os.path.exists(file))
+            
+    def test_download(self): 
+        logging.info("Testing file download")
 
-    def test_bucket_download(self): 
-        self.assertTrue(self.Helper.download([os.path.basename(TEST_FILE)], self.bucket, output_dir=DATA_DIR))
-        self.assertTrue(os.path.exists(Path.joinpath(Path.cwd(), DATA_DIR, DL_FILE)))
+        logging.debug("Downloading test files")
+        dlFiles = self.Helper.download("test.tar.gz", bucket=self.bucket, output_dir=DATA_DIR)
+        
+        # Should have downloaded one file
+        self.assertEqual(len(dlFiles), 1)
+        
+        # Tar should be deleted
+        self.assertTrue(not os.path.exists("test.tar.gz"))
+
+        # New file should be unzipped
+        self.assertTrue(os.path.exists(os.path.join(DATA_DIR, "test")))
+        

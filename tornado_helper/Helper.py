@@ -7,11 +7,12 @@ import shutil
 import zipfile
 import tarfile
 from tqdm import tqdm
-from typing import List, Optional
+from typing import List, Optional, Union
 from b2sdk.v2 import InMemoryAccountInfo, B2Api, AuthInfoCache, Bucket
 from urllib.parse import urlparse
 
 logging.basicConfig(level=logging.INFO)
+
 
 class Helper:
     """
@@ -23,7 +24,8 @@ class Helper:
     """
 
     __DEFAULT_PROXY_URL = "https://bbproxy.meyerstk.com"
-    __DEFAULT___DATA_DIR = "./data"
+    __DEFAULT_ENDPOINT_URL = "https://s3.us-west-000.backblazeb2.com"
+    __DEFAULT_DATA_DIR = "./data"
 
     def __init__(self, __DATA_DIR: Optional[str] = None) -> None:
         """
@@ -32,57 +34,153 @@ class Helper:
         Args:
             __DATA_DIR (Optional[str]): Custom directory to store data. Defaults to './data'.
         """
-        self.__DATA_DIR = Path(__DATA_DIR or self.__DEFAULT___DATA_DIR)
+        self.__DATA_DIR = Path(__DATA_DIR or self.__DEFAULT_DATA_DIR)
         self.__DATA_DIR.mkdir(parents=True, exist_ok=True)
 
         self.__TEMP_DIR = Path(tempfile.mkdtemp())
         logging.info(f"Data directory set at: {self.__DATA_DIR}")
         logging.debug(f"Temporary directory created at: {self.__TEMP_DIR}")
 
-    def _check_dependency(self, dependency: str) -> bool:
+    def _delete(self, files: Union[str, List[str]]) -> bool:
         """
-        Checks if a required command-line dependency is installed.
+        Deletes a file or list of files.
 
         Args:
-            dependency (str): The dependency to check.
+            files (Union[str, List[str]]): File path or list of file paths to delete.
 
         Returns:
-            bool: True if dependency exists, otherwise raises an error.
+            bool: True if files are deleted successfully.
 
         Raises:
-            RuntimeError: If the dependency is not found.
+            ValueError: If no file is provided.
         """
-        if shutil.which(dependency):
-            logging.debug(f"Dependency '{dependency}' found.")
+        if isinstance(files, list):
+            logging.debug("Deleting list of files...")
+            for itFile in files:
+                self._delete(itFile)
+            logging.debug("Deleted list of files")
             return True
 
-        error_message = f"Missing dependency: '{dependency}'. Please install it and try again."
-        logging.error(error_message)
-        raise RuntimeError(error_message)
+        file = files
+        if not file:
+            raise ValueError("File has to be provided to be deleted")
+
+        logging.debug(f"Deleting file {file}")
+        if not os.path.exists(file):
+            logging.warning(f"File doesn't exist {file}")
+            return False
+
+        os.remove(file)
+        return True
+
+    def _unzip(
+        self,
+        files: Union[str, List[str]],
+        output_dir: str = None,
+        delete: bool = True,
+    ) -> List[str]:
+        """
+        Extracts files if they are .zip, .tar.gz, or .tgz.
+
+        Args:
+            files (Union[str, List[str]]): File path or list of file paths to unzip.
+            output_dir (str): Directory where files should be extracted.
+            delete (bool): Whether to delete the original compressed file after extraction.
+
+        Returns:
+            List[str]: List of extracted file paths.
+
+        Raises:
+            ValueError: If no file is provided.
+            FileNotFoundError: If the file does not exist.
+        """
+        unzipped_files = []
+        
+        # TODO: SEE if tmp is even being used lol 
+        
+        if isinstance(files, list):
+            logging.debug("Unzipping list of files...")
+            for itFile in files:
+                unzipped_files.extend(self._unzip(itFile))
+            logging.debug("Unzipped list of files")
+            return unzipped_files
+
+        file = files
+        if not file:
+            raise ValueError("File has to be provided to be unzipped")
+
+        if not os.path.exists(file):
+            raise FileNotFoundError(f"Could not find file to unzip {file}")
+
+        if not output_dir: 
+            output_dir = os.path.dirname(file) 
+            
+        try:
+            if file.endswith(".zip"):
+                logging.debug(f"Unzipping (ZipFile): {file}")
+                with zipfile.ZipFile(file, "r") as zip_ref:
+                    zip_ref.extractall(output_dir)
+                    unzipped_files.extend(
+                        [os.path.join(output_dir, name) for name in zip_ref.namelist()]
+                    )
+
+            elif file.endswith((".tar.gz", ".tgz")):
+                logging.debug(f"Unzipping (TarFile): {file}")
+                with tarfile.open(file, "r:gz") as tar_ref:
+                    tar_ref.extractall(output_dir)
+                    unzipped_files.extend(
+                        [
+                            os.path.join(output_dir, member.name)
+                            for member in tar_ref.getmembers()
+                            if member.isfile()
+                        ]
+                    )
+            else:
+                logging.debug("File does not need to be unzipped")
+                unzipped_files.append(file)
+
+            if delete:
+                self._delete(file)
+
+            return unzipped_files
+
+        except Exception as e:
+            err_msg = f"Failed to extract {file}: {e}"
+            logging.error(err_msg)
+            raise ValueError(err_msg)
 
     def upload(
-        self, files: List[str], bucket: str, application_key: str, application_key_id: str
+        self,
+        files: Union[str, List[str]],
+        bucket: str,
+        application_key: str,
+        application_key_id: str,
     ) -> bool:
         """
         Uploads specified files to a given Backblaze B2 bucket.
 
         Args:
-            files (List[str]): List of file paths to upload.
-            bucket (str): Name of the B2 bucket.
-            application_key (str): B2 application key for authentication.
-            application_key_id (str): B2 application key ID for authentication.
+            files (Union[str, List[str]]): File path or list of file paths to upload.
+            bucket (str): Name of the target B2 bucket.
+            application_key (str): Application key for B2 authentication.
+            application_key_id (str): Application key ID for B2 authentication.
 
         Returns:
-            bool: True if uploads are successful.
+            bool: True if upload is successful.
 
         Raises:
-            Exception: If authentication or upload process fails.
+            Exception: If the upload fails.
         """
         try:
+            # Clear up logging for b2sdk...
+            logging.getLogger("b2sdk").setLevel(logging.WARNING)
+
             info = InMemoryAccountInfo()
             b2_api = B2Api(info, cache=AuthInfoCache(info))
             b2_api.authorize_account(
-                "production", application_key=application_key, application_key_id=application_key_id
+                "production",
+                application_key=application_key,
+                application_key_id=application_key_id,
             )
             logging.info(f"Authorized successfully to B2 bucket: {bucket}")
 
@@ -94,86 +192,73 @@ class Helper:
 
             logging.info("All files uploaded successfully.")
             return True
+
         except Exception as e:
             logging.error(f"Upload failed: {e}")
             raise
 
-    def delete(self, files: List[str]) -> None:
-        """
-        Deletes specified files from local storage.
-
-        Args:
-            files (List[str]): List of file paths to delete.
-        """
-        logging.info("Deleting specified files...")
-
-        for file in files:
-            try:
-                os.remove(file)
-                logging.debug(f"Deleted file: {file}")
-            except OSError as e:
-                logging.warning(f"Failed to delete file '{file}': {e}")
-
-    def unzip(self, files: List[str], output_dir: str) -> List[str]:
-        """
-        Extracts files if they are .zip, .tar.gz, or .tgz.
-        Wrapped in tqdm for progress tracking.
-
-        Args:
-            files (List[str]): List of file paths to extract.
-            output_dir (str): Directory to extract files to.
-
-        Returns:
-            List[str]: List of extracted file paths.
-        """
-        extracted_files = []
-        with tqdm(total=len(files), desc="Extracting", unit="file") as pbar:
-            for file_path in files:
-                try:
-                    if file_path.endswith('.zip'):
-                        with zipfile.ZipFile(file_path, 'r') as zip_ref:
-                            zip_ref.extractall(output_dir)
-                            extracted_files.extend([os.path.join(output_dir, name) for name in zip_ref.namelist()])
-                        os.remove(file_path)
-                        logging.info(f"Extracted and deleted: {file_path}")
-                    elif file_path.endswith(('.tar.gz', '.tgz')):
-                        with tarfile.open(file_path, 'r:gz') as tar_ref:
-                            tar_ref.extractall(output_dir)
-                            extracted_files.extend([os.path.join(output_dir, member.name)
-                                                    for member in tar_ref.getmembers() if member.isfile()])
-                        os.remove(file_path)
-                        logging.info(f"Extracted and deleted: {file_path}")
-                    else:
-                        extracted_files.append(file_path)
-                except Exception as e:
-                    logging.error(f"Failed to extract {file_path}: {e}")
-                pbar.update(1)
-        
-        return extracted_files
-
-    def download(self, links: List[str], bucket: str = None, output_dir: str = None, unzip: bool = True) -> List[str]:
+    def download(
+        self,
+        links: Union[str, List[str]],
+        bucket: str = None,
+        output_dir: str = None,
+        unzip: bool = True,
+    ) -> List[str]:
         """
         Downloads files from provided URLs using aria2c with TQDM progress,
         extracts archives (.zip, .tar.gz, .tgz) if needed, and returns file paths.
+
+        Args:
+            links (List[str]): List of URLs to download.
+            bucket (str, optional): Name of the B2 bucket if using proxy links. Defaults to None.
+            output_dir (str, optional): Directory to store downloaded files. Defaults to None.
+            unzip (bool, optional): Whether to extract compressed files. Defaults to True.
+
+        Returns:
+            List[str]: List of paths to downloaded (and extracted) files.
+
+        Raises:
+            subprocess.CalledProcessError: If the aria2c process fails.
+            Exception: If an unexpected error occurs.
         """
         temp_file = None
-        self._check_dependency("aria2c")
-        
+
+        if isinstance(links, str): 
+            links = list([links])
+
         if bucket:
-            links = [f"{self.__DEFAULT_PROXY_URL}/file/{bucket}/{link}" for link in links]
-        
+            links = [
+                f"{self.__DEFAULT_PROXY_URL}/file/{bucket}/{link}" for link in links
+            ]
+
         try:
             temp_file = tempfile.NamedTemporaryFile(delete=False, mode="w")
             temp_file.writelines(link + "\n" for link in links)
             temp_file.close()
             logging.debug(f"Temporary link file created at: {temp_file.name}")
-            
-            command = ["aria2c", "-j", "3", "-x", "16", "-s", "16", "-i", temp_file.name]
+
+            command = [
+                "aria2c",
+                "-j",
+                "3",
+                "-x",
+                "16",
+                "-s",
+                "16",
+                "--disable-ipv6",
+                "-i",
+                temp_file.name,
+            ]
             if output_dir:
                 command.extend(["-d", output_dir])
             logging.debug(f"Running download with options {command}")
-            
-            with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True) as process:
+
+            with subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                universal_newlines=True,
+            ) as process:
                 pbar = tqdm(total=len(links), desc="Downloading", unit="file")
                 for line in process.stdout:
                     logging.debug(line.strip())
@@ -181,23 +266,75 @@ class Helper:
                         pbar.update(1)
                 process.wait()
                 pbar.close()
-            
-            os.remove(temp_file.name)
+
+            self._delete(temp_file.name)
             logging.debug(f"Temporary file '{temp_file.name}' deleted.")
-            
+
             download_dir = output_dir if output_dir else os.getcwd()
-            downloaded_files = [os.path.join(download_dir, os.path.basename(urlparse(link).path)) for link in links]
+            downloaded_files = [
+                os.path.join(download_dir, os.path.basename(urlparse(link).path))
+                for link in links
+            ]
 
             logging.info("Downloads and extraction completed successfully.")
 
             if unzip:
-                return self.unzip(downloaded_files, download_dir)
-            
+                return self._unzip(downloaded_files, download_dir)
+
             return downloaded_files
-        
+
         except subprocess.CalledProcessError as e:
             logging.error(f"aria2c failed with exit status {e.returncode}: {e}")
             raise
         except Exception as e:
             logging.error(f"Unexpected error during download: {e}")
             raise
+
+    def sync(
+        self,
+        application_key: str,
+        application_key_id: str,
+        delete: bool = True,
+        links: List[str] = None,
+        bucket: str = None,
+    ) -> bool:
+        """
+        Synchronizes by downloading from links or bucket and uploading to B2.
+
+        Args:
+            application_key (str): Application key for B2 authentication.
+            application_key_id (str): Application key ID for B2 authentication.
+            delete (bool, optional): Whether to delete downloaded files after upload. Defaults to True.
+            links (List[str], optional): List of URLs to download. Defaults to None.
+            bucket (str, optional): Name of the B2 bucket to download from. Defaults to None.
+
+        Returns:
+            bool: True if the sync process is completed successfully.
+
+        Raises:
+            ValueError: If neither links nor bucket are provided.
+        """
+        logging.info("Beginning Sync Process")
+        cur_files = []
+
+        if links:
+            cur_files = self.download(links=links)
+
+        elif bucket:
+            cur_files = self.download(bucket=bucket)
+
+        else:
+            raise ValueError("Must provide either links or bucket as download source")
+
+        self.upload(
+            files=cur_files,
+            bucket=bucket,
+            application_key=application_key,
+            application_key_id=application_key_id,
+        )
+
+        if delete:
+            self._delete(cur_files)
+
+        logging.info("Sync process complete")
+        return True
