@@ -11,10 +11,10 @@ Stores in links arr so the download all just calls all while download small call
 class TorNet(Helper):
     __BUCKET_NAME = "TorNetBecauseZenodoSlow"
     __LINKS = [
-            "tornet_2013.tar.gz",
-            "tornet_2014.tar.gz",
-            "tornet_2015.tar.gz",
-            "tornet_2016.tar.gz",
+            # "tornet_2013.tar.gz", # Limited by GOES
+            # "tornet_2014.tar.gz",
+            # "tornet_2015.tar.gz",
+            # "tornet_2016.tar.gz",
             "tornet_2017.tar.gz",
             "tornet_2018.tar.gz",
             "tornet_2019.tar.gz",
@@ -32,7 +32,7 @@ class TorNet(Helper):
     """
     Override Download using Tornet specifics
     """
-    def download(self, output_dir: str = None) -> bool:
+    def download(self, output_dir: str = "TorNet_data") -> bool:
         return super().download(self.__LINKS, self.__BUCKET_NAME, output_dir)
     
     """
