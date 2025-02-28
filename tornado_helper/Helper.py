@@ -11,9 +11,6 @@ from typing import List, Optional, Union
 from b2sdk.v2 import InMemoryAccountInfo, B2Api, AuthInfoCache, Bucket
 from urllib.parse import urlparse
 
-logging.basicConfig(level=logging.INFO)
-
-
 class Helper:
     """
     A helper class providing default methods to upload/download files using Backblaze B2 and aria2c.
