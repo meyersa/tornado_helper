@@ -2,14 +2,15 @@ from setuptools import setup, find_packages
 
 setup(
     name="tornado_helper",
-    version="1.0.1",
+    version="1.0.2",
     packages=find_packages(),
     install_requires=[
         "requests",
         "b2sdk",
-        "dotenv",
+        "python-dotenv",
         "aria2p",
-        "tqdm"
+        "tqdm",
+        "boto3"
     ],
     author="August Meyers",
     description="A helper package for uploading and downloading Tornado training data",

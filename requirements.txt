@@ -1,5 +1,6 @@
 requests
 b2sdk
-dotenv
+python-dotenv
 aria2p
 tqdm
+boto3
