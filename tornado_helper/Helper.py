@@ -38,6 +38,27 @@ class Helper:
         logging.info(f"Data directory set at: {self.__DATA_DIR}")
         logging.debug(f"Temporary directory created at: {self.__TEMP_DIR}")
 
+    def _check_dependency(self, dependency: str) -> bool:
+        """
+        Checks if a required command-line dependency is installed.
+
+        Args:
+            dependency (str): The dependency to check.
+
+        Returns:
+            bool: True if dependency exists, otherwise raises an error.
+
+        Raises:
+            RuntimeError: If the dependency is not found.
+        """
+        if shutil.which(dependency):
+            logging.debug(f"Dependency '{dependency}' found.")
+            return True
+
+        error_message = f"Missing dependency: '{dependency}'. Please install it and try again."
+        logging.error(error_message)
+        raise RuntimeError(error_message)
+    
     def _delete(self, files: Union[str, List[str]]) -> bool:
         """
         Deletes a file or list of files.
@@ -219,6 +240,9 @@ class Helper:
             Exception: If an unexpected error occurs.
         """
         temp_file = None
+
+        # Ensure Aria exists
+        self._check_dependency("aria2c")
 
         if isinstance(links, str): 
             links = list([links])

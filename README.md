@@ -6,7 +6,13 @@ Based on a loader from the [Tornado prediction](https://github.com/meyersa/torna
 
 ## Installation 
 
-Simply install the package with pip
+Ensure Aria2c is installed for downloading, this can be done with your preferred package manager 
+
+> apt install aria2 
+
+> brew install aria2 
+
+Then simply install the package with pip
 
 > pip install tornado_helper 
 

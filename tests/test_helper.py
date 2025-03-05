@@ -36,6 +36,14 @@ class test_helper(unittest.TestCase):
         # Should also create Data dir
         self.assertTrue(os.path.exists("./data"))
 
+    def test_check_deps(self): 
+         # Should pass for real aria
+         self.assertTrue(self.Helper._check_dependency("aria2c"))
+
+         # Should fail for fake aria
+         with self.assertRaises(RuntimeError):
+              self.Helper._check_dependency("fakearia2c")
+    
     def test_delete(self): 
         logging.info("Testing delete method")
 
