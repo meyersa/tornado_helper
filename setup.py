@@ -2,13 +2,13 @@ from setuptools import setup, find_packages
 
 setup(
     name="tornado_helper",
-    version="1.0.0",
+    version="1.0.1",
     packages=find_packages(),
     install_requires=[
         "requests",
         "b2sdk",
         "dotenv",
-        "aria2",
+        "aria2p",
         "tqdm"
     ],
     author="August Meyers",

@@ -1,5 +1,5 @@
 requests
 b2sdk
 dotenv
-aria2
+aria2p
 tqdm
