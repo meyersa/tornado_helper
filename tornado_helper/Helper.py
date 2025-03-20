@@ -10,6 +10,12 @@ from tqdm import tqdm
 from typing import List, Optional, Union
 from b2sdk.v2 import InMemoryAccountInfo, B2Api, AuthInfoCache, Bucket
 from urllib.parse import urlparse
+import aria2p 
+import time 
+import socket 
+
+ARIA_ADDRESS = "localhost"
+ARIA_PORT = 6800
 
 class Helper:
     """
@@ -24,6 +30,14 @@ class Helper:
     __DEFAULT_ENDPOINT_URL = "https://s3.us-west-000.backblazeb2.com"
     __DEFAULT_DATA_DIR = "./data"
 
+    __DEFAULT_ARIA_OPTIONS = {
+        "max-concurrent-downloads": "3",
+        "max-connection-per-server": "16",
+        "split": "16",
+        "disable-ipv6": "true",
+        "dir": __DEFAULT_DATA_DIR
+    }
+
     def __init__(self, __DATA_DIR: Optional[str] = None) -> None:
         """
         Initializes the Helper instance by setting up data and temporary directories.
@@ -37,6 +51,9 @@ class Helper:
         self.__TEMP_DIR = Path(tempfile.mkdtemp())
         logging.info(f"Data directory set at: {self.__DATA_DIR}")
         logging.debug(f"Temporary directory created at: {self.__TEMP_DIR}")
+
+        self.aria2 = aria2p.API(aria2p.Client(host="http://localhost", port=6800, secret=""))    
+        logging.info("Created Aria2 Downloader")
 
     def _check_dependency(self, dependency: str) -> bool:
         """
@@ -113,9 +130,7 @@ class Helper:
             FileNotFoundError: If the file does not exist.
         """
         unzipped_files = []
-        
-        # TODO: SEE if tmp is even being used lol 
-        
+                
         if isinstance(files, list):
             logging.debug("Unzipping list of files...")
             for itFile in files:
@@ -215,6 +230,31 @@ class Helper:
             logging.error(f"Upload failed: {e}")
             raise
 
+    def _start_aria2(self): 
+        """
+        Method to start Aria2 in server mode
+        
+        I really don't understand why there isn't just a python library for Aria
+        """
+        logging.debug("Checking if Aria2 is running as server")
+
+        try: 
+            logging.debug("Polling socket")
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.connect((ARIA_ADDRESS, ARIA_PORT))
+            s.close()
+
+            logging.debug("Aria is running, returning")
+            return 
+        
+        except Exception: 
+            logging.debug("Aria is not running, starting") 
+            return subprocess.Popen([
+                "aria2c",
+                "--enable-rpc",
+                f"--rpc-listen-port={ARIA_PORT}"
+            ])
+
     def download(
         self,
         links: Union[str, List[str]],
@@ -239,10 +279,11 @@ class Helper:
             subprocess.CalledProcessError: If the aria2c process fails.
             Exception: If an unexpected error occurs.
         """
-        temp_file = None
-
         # Ensure Aria exists
         self._check_dependency("aria2c")
+
+        # Ensure Aria is started
+        aria_proc = self._start_aria2() 
 
         if isinstance(links, str): 
             links = list([links])
@@ -253,55 +294,34 @@ class Helper:
             ]
 
         try:
-            temp_file = tempfile.NamedTemporaryFile(delete=False, mode="w")
-            temp_file.writelines(link + "\n" for link in links)
-            temp_file.close()
-            logging.debug(f"Temporary link file created at: {temp_file.name}")
+            logging.info(f"Downloading {len(links)} files with Aria2")
+            aria_downloads = self.aria2.add_uris(links, self.__DEFAULT_ARIA_OPTIONS)
 
-            command = [
-                "aria2c",
-                "-j",
-                "3",
-                "-x",
-                "16",
-                "-s",
-                "16",
-                "--disable-ipv6",
-                "-i",
-                temp_file.name,
-            ]
-            if output_dir:
-                command.extend(["-d", output_dir])
-            logging.debug(f"Running download with options {command}")
+            # Progress bar output
+            pbar = tqdm(total=aria_downloads.total_length, unit="B", unit_scale=True)
+            while aria_downloads.status not in ("complete", "error"):
+                time.sleep(1)
+                cur_download = self.aria2.get_download(aria_downloads.gid)
+                current = int(cur_download.completed_length)
+                pbar.update(current - pbar.n)
 
-            with subprocess.Popen(
-                command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                universal_newlines=True,
-            ) as process:
-                pbar = tqdm(total=len(links), desc="Downloading", unit="file")
-                for line in process.stdout:
-                    logging.debug(line.strip())
-                    if "Download complete:" in line:
-                        pbar.update(1)
-                process.wait()
-                pbar.close()
+            # End progress bar
+            pbar.close()
 
-            self._delete(temp_file.name)
-            logging.debug(f"Temporary file '{temp_file.name}' deleted.")
+            # End aria
+            aria_proc.terminate() 
 
-            download_dir = output_dir if output_dir else os.getcwd()
+            # Output 
             downloaded_files = [
-                os.path.join(download_dir, os.path.basename(urlparse(link).path))
+                os.path.join(output_dir, os.path.basename(urlparse(link).path))
                 for link in links
             ]
 
-            logging.info("Downloads and extraction completed successfully.")
-
             if unzip:
-                return self._unzip(downloaded_files, download_dir)
+                logging.info("Downloads completed successfully")
+                return self._unzip(downloaded_files, output_dir)
 
+            logging.info("Downloads and extraction completed successfully.")
             return downloaded_files
 
         except subprocess.CalledProcessError as e:
