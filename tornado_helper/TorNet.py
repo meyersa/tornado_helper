@@ -11,10 +11,10 @@ Stores in links arr so the download all just calls all while download small call
 class TorNet(Helper):
     __BUCKET_NAME = "TorNetBecauseZenodoSlow"
     __LINKS = [
-            # "tornet_2013.tar.gz", # Limited by GOES
-            # "tornet_2014.tar.gz",
-            # "tornet_2015.tar.gz",
-            # "tornet_2016.tar.gz",
+            "tornet_2013.tar.gz",
+            "tornet_2014.tar.gz",
+            "tornet_2015.tar.gz",
+            "tornet_2016.tar.gz",
             "tornet_2017.tar.gz",
             "tornet_2018.tar.gz",
             "tornet_2019.tar.gz",
