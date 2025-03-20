@@ -255,6 +255,28 @@ class Helper:
                 f"--rpc-listen-port={ARIA_PORT}"
             ])
 
+    def _check_aria2_status(self, download: Union[aria2p.Download, List[aria2p.Download]]) -> bool: 
+        """
+        Check if an Aria2 download is active
+        
+        Args: 
+            gid (aria2p.Download | List[aria2p.Download]): Gid to check
+            
+        Returns: 
+            bool: True if active, false if not
+        """
+        if isinstance(download, list): 
+            return all(self._check_aria2_status(dl) for dl in download) 
+        
+        try: 
+            status = self.aria2.get_download(download.gid).is_complete
+            logging.debug(f'Status for {download} is {status}')
+            return status
+
+        # Handle not found error    
+        except aria2p.ClientException:
+            return False
+
     def download(
         self,
         links: Union[str, List[str]],
@@ -267,7 +289,7 @@ class Helper:
         extracts archives (.zip, .tar.gz, .tgz) if needed, and returns file paths.
 
         Args:
-            links (List[str]): List of URLs to download.
+            links (str | List[str]): List of URLs to download.
             bucket (str, optional): Name of the B2 bucket if using proxy links. Defaults to None.
             output_dir (str, optional): Directory to store downloaded files. Defaults to None.
             unzip (bool, optional): Whether to extract compressed files. Defaults to True.
@@ -299,8 +321,8 @@ class Helper:
 
             # Progress bar output
             pbar = tqdm(total=aria_downloads.total_length, unit="B", unit_scale=True)
-            while aria_downloads.status not in ("complete", "error"):
-                time.sleep(1)
+            while not self._check_aria2_status(aria_downloads):
+                time.sleep(1)    
                 cur_download = self.aria2.get_download(aria_downloads.gid)
                 current = int(cur_download.completed_length)
                 pbar.update(current - pbar.n)
@@ -309,7 +331,8 @@ class Helper:
             pbar.close()
 
             # End aria
-            aria_proc.terminate() 
+            if aria_proc:
+                aria_proc.terminate() 
 
             # Output 
             downloaded_files = [
