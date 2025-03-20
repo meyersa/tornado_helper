@@ -154,3 +154,5 @@ class GOES(Helper):
             ValueError: Always, as uploading to GOES is not permitted.
         """
         raise ValueError("Cannot upload to GOES")
+
+    # TODO: download -> clean -> tfrecord -> s3
