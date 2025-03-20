@@ -8,7 +8,6 @@ import logging
 import datetime
 import time 
 
-DATA_DIR = "data"
 class test_helper(unittest.TestCase):
 
     @classmethod
@@ -34,7 +33,7 @@ class test_helper(unittest.TestCase):
         self.assertIsInstance(self.Helper, Helper)
 
         # Should also create Data dir
-        self.assertTrue(os.path.exists("./data"))
+        self.assertTrue(os.path.exists(self.Helper.data_dir))
 
     def test_check_deps(self): 
          # Should pass for real aria
@@ -48,7 +47,7 @@ class test_helper(unittest.TestCase):
         logging.info("Testing delete method")
 
         logging.debug("Creating test file")
-        test_file = "test.txt"
+        test_file = "test_delete.txt"
         with open(test_file, "w") as f: 
                 f.write("test")        
                 
@@ -65,7 +64,7 @@ class test_helper(unittest.TestCase):
         logging.info("Testing unzip method")
 
         logging.debug("Creating a test file")
-        tar_raw = "test.txt"
+        tar_raw = "test_unzip.txt"
         with open(tar_raw, "w") as f: 
                 f.write("test")   
                 
@@ -82,15 +81,16 @@ class test_helper(unittest.TestCase):
         self.assertTrue(not os.path.exists(tar_raw))
 
         logging.debug("Unzipping file")
-        self.assertEqual(self.Helper._unzip(tar_zip)[0], tar_raw)
+        unzipped = self.Helper._unzip(tar_zip)[0]
+        self.assertEqual(unzipped, f"{str(self.Helper.data_dir)}\{tar_raw}")
 
         logging.debug("Opening file to check contents")
-        with open(tar_raw) as f: 
+        with open(unzipped) as f: 
             self.assertEqual(f.readline(), "test")
 
         logging.debug("Deleting file")
-        self.Helper._delete(tar_raw)
-        self.assertTrue(not os.path.exists(tar_raw))
+        self.Helper._delete(unzipped)
+        self.assertTrue(not os.path.exists(unzipped))
 
     def test_upload(self): 
         logging.info("Testing file upload")
@@ -116,7 +116,7 @@ class test_helper(unittest.TestCase):
         logging.info("Testing file download")
 
         logging.debug("Downloading test files")
-        dlFiles = self.Helper.download("test.tar.gz", bucket=self.bucket, output_dir=DATA_DIR)
+        dlFiles = self.Helper.download("test.tar.gz", bucket=self.bucket)
         
         # Should have downloaded one file
         self.assertEqual(len(dlFiles), 1)
@@ -125,5 +125,8 @@ class test_helper(unittest.TestCase):
         self.assertTrue(not os.path.exists("test.tar.gz"))
 
         # New file should be unzipped
-        self.assertTrue(os.path.exists(os.path.join(DATA_DIR, "test")))
+        self.assertTrue(os.path.exists(os.path.join(self.Helper.data_dir, "test")))
         
+        logging.debug("Deleting file")
+        self.Helper._delete(os.path.join(self.Helper.data_dir, "test"))
+        self.assertTrue(not os.path.exists(os.path.join(self.Helper.data_dir, "test")))
