@@ -33,7 +33,7 @@ class GOES(Helper):
         __YEAR_END (int): The latest year for which data is available.
         __SENSOR (str): The sensor type to be used in the data path.
     """
-
+    __DEFAULT_DATA_DIR = "./data_goes"
     __GOES_BUCKETS = {
         "east": "noaa-goes16",  # GOES-16 (2017-Present, Eastern U.S.)
         "west_old": "noaa-goes17",  # GOES-17 (2018-2022, Western U.S.)

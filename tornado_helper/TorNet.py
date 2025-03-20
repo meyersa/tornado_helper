@@ -9,6 +9,7 @@ Includes a method to download all data, upload data to s3, and to download just 
 Stores in links arr so the download all just calls all while download small calls just one 
 """
 class TorNet(Helper):
+    __DEFAULT_DATA_DIR = "./data_tornet"
     __BUCKET_NAME = "TorNetBecauseZenodoSlow"
     __LINKS = [
             "tornet_2013.tar.gz",
