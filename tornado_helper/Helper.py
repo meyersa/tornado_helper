@@ -328,20 +328,22 @@ class Helper:
             logging.info(f"Downloading {len(links)} files with Aria2")
             aria_downloads = self.aria2.add_uris(links, self.__DEFAULT_ARIA_OPTIONS)
 
-            # Progress bar output
-            pbar = tqdm(total=aria_downloads.total_length, unit="B", unit_scale=True)
-            while not self._check_aria2_status(aria_downloads):
+            # Wait for total length to be complete 
+            while not aria_downloads.total_length:
                 time.sleep(1)
-                cur_download = self.aria2.get_download(aria_downloads.gid)
-                current = int(cur_download.completed_length)
-                pbar.update(current - pbar.n)
+                aria_downloads.update()
+
+            logging.info(f"Downloading {aria_downloads.total_length} bytes")
+            pbar = tqdm(total=aria_downloads.total_length, unit="B", unit_scale=True)
+            
+            # Progress Bar for tracking download 
+            while not aria_downloads.is_complete: 
+                time.sleep(1)
+                aria_downloads.update()
+                pbar.update(aria_downloads.completed_length - pbar.n)
 
             # End progress bar
             pbar.close()
-
-            # End aria
-            # if aria_proc:
-            #     aria_proc.terminate()
 
             # Output
             downloaded_files = [
