@@ -10,12 +10,13 @@ from tqdm import tqdm
 from typing import List, Optional, Union
 from b2sdk.v2 import InMemoryAccountInfo, B2Api, AuthInfoCache, Bucket
 from urllib.parse import urlparse
-import aria2p 
-import time 
-import socket 
+import aria2p
+import time
+import socket
 
 ARIA_ADDRESS = "localhost"
 ARIA_PORT = 6800
+
 
 class Helper:
     """
@@ -28,31 +29,33 @@ class Helper:
 
     __DEFAULT_PROXY_URL = "https://bbproxy.meyerstk.com"
     __DEFAULT_ENDPOINT_URL = "https://s3.us-west-000.backblazeb2.com"
-    __DEFAULT_DATA_DIR = "./data"
+    __DEFAULT_DATA_DIR = "./data_helper"
+    __TEMP_DIR = tempfile.mkdtemp()
 
     __DEFAULT_ARIA_OPTIONS = {
         "max-concurrent-downloads": "3",
         "max-connection-per-server": "16",
         "split": "16",
         "disable-ipv6": "true",
-        "dir": __DEFAULT_DATA_DIR
+        "dir": __TEMP_DIR,
     }
 
-    def __init__(self, __DATA_DIR: Optional[str] = None) -> None:
+    def __init__(self, data_dir: Optional[str] = None) -> None:
         """
         Initializes the Helper instance by setting up data and temporary directories.
 
         Args:
-            __DATA_DIR (Optional[str]): Custom directory to store data. Defaults to './data'.
+            data_dir (Optional[str]): Custom directory to store data. Defaults to './data'.
         """
-        self.__DATA_DIR = Path(__DATA_DIR or self.__DEFAULT_DATA_DIR)
-        self.__DATA_DIR.mkdir(parents=True, exist_ok=True)
+        self.data_dir = Path(data_dir or self.__DEFAULT_DATA_DIR)
+        self.data_dir.mkdir(parents=True, exist_ok=True)
 
-        self.__TEMP_DIR = Path(tempfile.mkdtemp())
-        logging.info(f"Data directory set at: {self.__DATA_DIR}")
+        logging.info(f"Data directory set at: {self.data_dir}")
         logging.debug(f"Temporary directory created at: {self.__TEMP_DIR}")
 
-        self.aria2 = aria2p.API(aria2p.Client(host="http://localhost", port=6800, secret=""))    
+        self.aria2 = aria2p.API(
+            aria2p.Client(host="http://localhost", port=6800, secret="")
+        )
         logging.info("Created Aria2 Downloader")
 
     def _check_dependency(self, dependency: str) -> bool:
@@ -72,10 +75,12 @@ class Helper:
             logging.debug(f"Dependency '{dependency}' found.")
             return True
 
-        error_message = f"Missing dependency: '{dependency}'. Please install it and try again."
+        error_message = (
+            f"Missing dependency: '{dependency}'. Please install it and try again."
+        )
         logging.error(error_message)
         raise RuntimeError(error_message)
-    
+
     def _delete(self, files: Union[str, List[str]]) -> bool:
         """
         Deletes a file or list of files.
@@ -130,7 +135,7 @@ class Helper:
             FileNotFoundError: If the file does not exist.
         """
         unzipped_files = []
-                
+
         if isinstance(files, list):
             logging.debug("Unzipping list of files...")
             for itFile in files:
@@ -145,9 +150,9 @@ class Helper:
         if not os.path.exists(file):
             raise FileNotFoundError(f"Could not find file to unzip {file}")
 
-        if not output_dir: 
-            output_dir = os.path.dirname(file) 
-            
+        if not output_dir:
+            output_dir = self.data_dir
+
         try:
             if file.endswith(".zip"):
                 logging.debug(f"Unzipping (ZipFile): {file}")
@@ -230,50 +235,50 @@ class Helper:
             logging.error(f"Upload failed: {e}")
             raise
 
-    def _start_aria2(self): 
+    def _start_aria2(self):
         """
         Method to start Aria2 in server mode
-        
+
         I really don't understand why there isn't just a python library for Aria
         """
         logging.debug("Checking if Aria2 is running as server")
 
-        try: 
+        try:
             logging.debug("Polling socket")
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.connect((ARIA_ADDRESS, ARIA_PORT))
             s.close()
 
             logging.debug("Aria is running, returning")
-            return 
-        
-        except Exception: 
-            logging.debug("Aria is not running, starting") 
-            return subprocess.Popen([
-                "aria2c",
-                "--enable-rpc",
-                f"--rpc-listen-port={ARIA_PORT}"
-            ])
+            return
 
-    def _check_aria2_status(self, download: Union[aria2p.Download, List[aria2p.Download]]) -> bool: 
+        except Exception:
+            logging.debug("Aria is not running, starting")
+            return subprocess.Popen(
+                ["aria2c", "--enable-rpc", f"--rpc-listen-port={ARIA_PORT}"]
+            )
+
+    def _check_aria2_status(
+        self, download: Union[aria2p.Download, List[aria2p.Download]]
+    ) -> bool:
         """
         Check if an Aria2 download is active
-        
-        Args: 
+
+        Args:
             gid (aria2p.Download | List[aria2p.Download]): Gid to check
-            
-        Returns: 
+
+        Returns:
             bool: True if active, false if not
         """
-        if isinstance(download, list): 
-            return all(self._check_aria2_status(dl) for dl in download) 
-        
-        try: 
+        if isinstance(download, list):
+            return all(self._check_aria2_status(dl) for dl in download)
+
+        try:
             status = self.aria2.get_download(download.gid).is_complete
-            logging.debug(f'Status for {download} is {status}')
+            logging.debug(f"Status for {download} is {status}")
             return status
 
-        # Handle not found error    
+        # Handle not found error
         except aria2p.ClientException:
             return False
 
@@ -305,9 +310,13 @@ class Helper:
         self._check_dependency("aria2c")
 
         # Ensure Aria is started
-        aria_proc = self._start_aria2() 
+        aria_proc = self._start_aria2()
 
-        if isinstance(links, str): 
+        # Set output dir to default
+        if not output_dir:
+            output_dir = self.data_dir
+
+        if isinstance(links, str):
             links = list([links])
 
         if bucket:
@@ -322,7 +331,7 @@ class Helper:
             # Progress bar output
             pbar = tqdm(total=aria_downloads.total_length, unit="B", unit_scale=True)
             while not self._check_aria2_status(aria_downloads):
-                time.sleep(1)    
+                time.sleep(1)
                 cur_download = self.aria2.get_download(aria_downloads.gid)
                 current = int(cur_download.completed_length)
                 pbar.update(current - pbar.n)
@@ -331,20 +340,32 @@ class Helper:
             pbar.close()
 
             # End aria
-            if aria_proc:
-                aria_proc.terminate() 
+            # if aria_proc:
+            #     aria_proc.terminate()
 
-            # Output 
+            # Output
             downloaded_files = [
-                os.path.join(output_dir, os.path.basename(urlparse(link).path))
-                for link in links
+                str(aria_path)
+                for aria_path in self.aria2.get_download(
+                    aria_downloads.gid
+                ).root_files_paths
             ]
 
+            logging.info(f"Successfully downloaded {len(downloaded_files)} files")
+
             if unzip:
-                logging.info("Downloads completed successfully")
+                logging.info("Unzipping files...")
                 return self._unzip(downloaded_files, output_dir)
 
-            logging.info("Downloads and extraction completed successfully.")
+            logging.info(f"Moving downloaded files to output dir {output_dir}")
+            self.aria2.get_download(aria_downloads.gid).move_files(output_dir)
+
+            # New output files
+            downloaded_files = [
+                os.path.join(output_dir, os.path.basename(dl_file))
+                for dl_file in downloaded_files
+            ]
+
             return downloaded_files
 
         except subprocess.CalledProcessError as e:
