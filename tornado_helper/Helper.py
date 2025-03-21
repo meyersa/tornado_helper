@@ -13,9 +13,13 @@ from urllib.parse import urlparse
 import aria2p
 import time
 import socket
+import shutil
 
 ARIA_ADDRESS = "localhost"
 ARIA_PORT = 6800
+
+# Spammy
+logging.getLogger("urllib3").setLevel(logging.INFO)
 
 
 class Helper:
@@ -175,7 +179,13 @@ class Helper:
                     )
             else:
                 logging.debug("File does not need to be unzipped")
-                unzipped_files.append(file)
+
+                # Move since isn't being unzipped to location
+                new_path = os.path.join(output_dir, os.path.basename(file))
+                shutil.move(file, new_path)
+                unzipped_files.append(new_path)
+
+                return unzipped_files
 
             if delete:
                 self._delete(file)
@@ -310,7 +320,7 @@ class Helper:
         self._check_dependency("aria2c")
 
         # Ensure Aria is started
-        aria_proc = self._start_aria2()
+        self._start_aria2()
 
         # Set output dir to default
         if not output_dir:
@@ -328,16 +338,16 @@ class Helper:
             logging.info(f"Downloading {len(links)} files with Aria2")
             aria_downloads = self.aria2.add_uris(links, self.__DEFAULT_ARIA_OPTIONS)
 
-            # Wait for total length to be complete 
+            # Wait for total length to be complete
             while not aria_downloads.total_length:
                 time.sleep(1)
                 aria_downloads.update()
 
             logging.info(f"Downloading {aria_downloads.total_length} bytes")
             pbar = tqdm(total=aria_downloads.total_length, unit="B", unit_scale=True)
-            
-            # Progress Bar for tracking download 
-            while not aria_downloads.is_complete: 
+
+            # Progress Bar for tracking download
+            while not aria_downloads.is_complete:
                 time.sleep(1)
                 aria_downloads.update()
                 pbar.update(aria_downloads.completed_length - pbar.n)
