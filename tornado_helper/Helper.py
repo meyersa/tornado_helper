@@ -10,6 +10,17 @@ from tqdm import tqdm
 from typing import List, Optional, Union
 from b2sdk.v2 import InMemoryAccountInfo, B2Api, AuthInfoCache, Bucket
 from urllib.parse import urlparse
+import aria2p
+import time
+import socket
+import shutil
+
+ARIA_ADDRESS = "localhost"
+ARIA_PORT = 6800
+
+# Spammy
+logging.getLogger("urllib3").setLevel(logging.INFO)
+
 
 class Helper:
     """
@@ -22,21 +33,34 @@ class Helper:
 
     __DEFAULT_PROXY_URL = "https://bbproxy.meyerstk.com"
     __DEFAULT_ENDPOINT_URL = "https://s3.us-west-000.backblazeb2.com"
-    __DEFAULT_DATA_DIR = "./data"
+    __DEFAULT_DATA_DIR = "./data_helper"
+    __TEMP_DIR = tempfile.mkdtemp()
 
-    def __init__(self, __DATA_DIR: Optional[str] = None) -> None:
+    __DEFAULT_ARIA_OPTIONS = {
+        "max-concurrent-downloads": "3",
+        "max-connection-per-server": "16",
+        "split": "16",
+        "disable-ipv6": "true",
+        "dir": __TEMP_DIR,
+    }
+
+    def __init__(self, data_dir: Optional[str] = None) -> None:
         """
         Initializes the Helper instance by setting up data and temporary directories.
 
         Args:
-            __DATA_DIR (Optional[str]): Custom directory to store data. Defaults to './data'.
+            data_dir (Optional[str]): Custom directory to store data. Defaults to './data'.
         """
-        self.__DATA_DIR = Path(__DATA_DIR or self.__DEFAULT_DATA_DIR)
-        self.__DATA_DIR.mkdir(parents=True, exist_ok=True)
+        self.data_dir = Path(data_dir or self.__DEFAULT_DATA_DIR)
+        self.data_dir.mkdir(parents=True, exist_ok=True)
 
-        self.__TEMP_DIR = Path(tempfile.mkdtemp())
-        logging.info(f"Data directory set at: {self.__DATA_DIR}")
+        logging.info(f"Data directory set at: {self.data_dir}")
         logging.debug(f"Temporary directory created at: {self.__TEMP_DIR}")
+
+        self.aria2 = aria2p.API(
+            aria2p.Client(host="http://localhost", port=6800, secret="")
+        )
+        logging.info("Created Aria2 Downloader")
 
     def _check_dependency(self, dependency: str) -> bool:
         """
@@ -55,10 +79,12 @@ class Helper:
             logging.debug(f"Dependency '{dependency}' found.")
             return True
 
-        error_message = f"Missing dependency: '{dependency}'. Please install it and try again."
+        error_message = (
+            f"Missing dependency: '{dependency}'. Please install it and try again."
+        )
         logging.error(error_message)
         raise RuntimeError(error_message)
-    
+
     def _delete(self, files: Union[str, List[str]]) -> bool:
         """
         Deletes a file or list of files.
@@ -113,9 +139,7 @@ class Helper:
             FileNotFoundError: If the file does not exist.
         """
         unzipped_files = []
-        
-        # TODO: SEE if tmp is even being used lol 
-        
+
         if isinstance(files, list):
             logging.debug("Unzipping list of files...")
             for itFile in files:
@@ -130,9 +154,9 @@ class Helper:
         if not os.path.exists(file):
             raise FileNotFoundError(f"Could not find file to unzip {file}")
 
-        if not output_dir: 
-            output_dir = os.path.dirname(file) 
-            
+        if not output_dir:
+            output_dir = self.data_dir
+
         try:
             if file.endswith(".zip"):
                 logging.debug(f"Unzipping (ZipFile): {file}")
@@ -155,7 +179,13 @@ class Helper:
                     )
             else:
                 logging.debug("File does not need to be unzipped")
-                unzipped_files.append(file)
+
+                # Move since isn't being unzipped to location
+                new_path = os.path.join(output_dir, os.path.basename(file))
+                shutil.move(file, new_path)
+                unzipped_files.append(new_path)
+
+                return unzipped_files
 
             if delete:
                 self._delete(file)
@@ -215,6 +245,53 @@ class Helper:
             logging.error(f"Upload failed: {e}")
             raise
 
+    def _start_aria2(self):
+        """
+        Method to start Aria2 in server mode
+
+        I really don't understand why there isn't just a python library for Aria
+        """
+        logging.debug("Checking if Aria2 is running as server")
+
+        try:
+            logging.debug("Polling socket")
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.connect((ARIA_ADDRESS, ARIA_PORT))
+            s.close()
+
+            logging.debug("Aria is running, returning")
+            return
+
+        except Exception:
+            logging.debug("Aria is not running, starting")
+            return subprocess.Popen(
+                ["aria2c", "--enable-rpc", f"--rpc-listen-port={ARIA_PORT}"]
+            )
+
+    def _check_aria2_status(
+        self, download: Union[aria2p.Download, List[aria2p.Download]]
+    ) -> bool:
+        """
+        Check if an Aria2 download is active
+
+        Args:
+            gid (aria2p.Download | List[aria2p.Download]): Gid to check
+
+        Returns:
+            bool: True if active, false if not
+        """
+        if isinstance(download, list):
+            return all(self._check_aria2_status(dl) for dl in download)
+
+        try:
+            status = self.aria2.get_download(download.gid).is_complete
+            logging.debug(f"Status for {download} is {status}")
+            return status
+
+        # Handle not found error
+        except aria2p.ClientException:
+            return False
+
     def download(
         self,
         links: Union[str, List[str]],
@@ -227,7 +304,7 @@ class Helper:
         extracts archives (.zip, .tar.gz, .tgz) if needed, and returns file paths.
 
         Args:
-            links (List[str]): List of URLs to download.
+            links (str | List[str]): List of URLs to download.
             bucket (str, optional): Name of the B2 bucket if using proxy links. Defaults to None.
             output_dir (str, optional): Directory to store downloaded files. Defaults to None.
             unzip (bool, optional): Whether to extract compressed files. Defaults to True.
@@ -239,12 +316,17 @@ class Helper:
             subprocess.CalledProcessError: If the aria2c process fails.
             Exception: If an unexpected error occurs.
         """
-        temp_file = None
-
         # Ensure Aria exists
         self._check_dependency("aria2c")
 
-        if isinstance(links, str): 
+        # Ensure Aria is started
+        self._start_aria2()
+
+        # Set output dir to default
+        if not output_dir:
+            output_dir = self.data_dir
+
+        if isinstance(links, str):
             links = list([links])
 
         if bucket:
@@ -253,54 +335,48 @@ class Helper:
             ]
 
         try:
-            temp_file = tempfile.NamedTemporaryFile(delete=False, mode="w")
-            temp_file.writelines(link + "\n" for link in links)
-            temp_file.close()
-            logging.debug(f"Temporary link file created at: {temp_file.name}")
+            logging.info(f"Downloading {len(links)} files with Aria2")
+            aria_downloads = self.aria2.add_uris(links, self.__DEFAULT_ARIA_OPTIONS)
 
-            command = [
-                "aria2c",
-                "-j",
-                "3",
-                "-x",
-                "16",
-                "-s",
-                "16",
-                "--disable-ipv6",
-                "-i",
-                temp_file.name,
-            ]
-            if output_dir:
-                command.extend(["-d", output_dir])
-            logging.debug(f"Running download with options {command}")
+            # Wait for total length to be complete
+            while not aria_downloads.total_length:
+                time.sleep(1)
+                aria_downloads.update()
 
-            with subprocess.Popen(
-                command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                universal_newlines=True,
-            ) as process:
-                pbar = tqdm(total=len(links), desc="Downloading", unit="file")
-                for line in process.stdout:
-                    logging.debug(line.strip())
-                    if "Download complete:" in line:
-                        pbar.update(1)
-                process.wait()
-                pbar.close()
+            logging.info(f"Downloading {aria_downloads.total_length} bytes")
+            pbar = tqdm(total=aria_downloads.total_length, unit="B", unit_scale=True)
 
-            self._delete(temp_file.name)
-            logging.debug(f"Temporary file '{temp_file.name}' deleted.")
+            # Progress Bar for tracking download
+            while not aria_downloads.is_complete:
+                time.sleep(1)
+                aria_downloads.update()
+                pbar.update(aria_downloads.completed_length - pbar.n)
 
-            download_dir = output_dir if output_dir else os.getcwd()
+            # End progress bar
+            pbar.close()
+
+            # Output
             downloaded_files = [
-                os.path.join(download_dir, os.path.basename(urlparse(link).path))
-                for link in links
+                str(aria_path)
+                for aria_path in self.aria2.get_download(
+                    aria_downloads.gid
+                ).root_files_paths
             ]
 
-            logging.info("Downloads and extraction completed successfully.")
+            logging.info(f"Successfully downloaded {len(downloaded_files)} files")
 
             if unzip:
-                return self._unzip(downloaded_files, download_dir)
+                logging.info("Unzipping files...")
+                return self._unzip(downloaded_files, output_dir)
+
+            logging.info(f"Moving downloaded files to output dir {output_dir}")
+            self.aria2.get_download(aria_downloads.gid).move_files(output_dir)
+
+            # New output files
+            downloaded_files = [
+                os.path.join(output_dir, os.path.basename(dl_file))
+                for dl_file in downloaded_files
+            ]
 
             return downloaded_files
 

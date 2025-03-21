@@ -1,6 +1,7 @@
 .env
 __pycache__
-data
+data_**
 dist 
 *.egg-info
 build
+.venv

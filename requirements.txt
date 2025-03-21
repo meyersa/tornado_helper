@@ -4,3 +4,4 @@ python-dotenv
 aria2p
 tqdm
 boto3
+pandas
