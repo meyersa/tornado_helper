@@ -1,7 +1,7 @@
 from typing import List
 import logging
 from .Helper import Helper
-
+from pathlib import Path
 class TorNet(Helper):
     """
     Class for handling TorNet data downloads and uploads.
@@ -43,8 +43,10 @@ class TorNet(Helper):
         self.partial = partial
         self.raw = raw
         
+        self.data_dir = Path(data_dir or self.__DEFAULT_DATA_DIR)
+
         logging.info("TorNet initialized with partial=%s, raw=%s", partial, raw)
-        super().__init__(data_dir)
+        super().__init__(self.data_dir)
 
     def upload(self, files: List[str], application_key: str, application_key_id: str) -> bool:
         """
@@ -62,7 +64,7 @@ class TorNet(Helper):
         logging.debug("Files to upload: %s", files)
         return super().upload(files, self.__BUCKET_NAME, application_key, application_key_id)
 
-    def download(self, output_dir: str = "TorNet_data") -> bool:
+    def download(self, output_dir: str = None) -> bool:
         """
         Downloads TorNet data based on the specified settings.
         
@@ -77,6 +79,9 @@ class TorNet(Helper):
         """
         logging.info("Starting download process with raw=%s, partial=%s", self.raw, self.partial)
 
+        if not output_dir: 
+            output_dir = self.data_dir
+            
         if self.raw:
             if self.partial:
                 logging.info("Downloading single file from raw Zenodo link")
