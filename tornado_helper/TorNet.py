@@ -43,6 +43,12 @@ class TorNet(Helper):
         Returns the TorNet Catalog as a DataFrame
         If a year or list of years is provided, returns data only for those years.
         Otherwise, returns all data.
+
+        Args: 
+            year (int, list of int, optional): Year or list of years to download. If None, downloads all years.
+
+        Returns: 
+            pd.Dataframe of csv
         """
         file_paths = super().download(self.__CATALOG)
         df = pd.read_csv(file_paths[0])
