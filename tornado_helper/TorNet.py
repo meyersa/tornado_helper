@@ -13,27 +13,25 @@ class TorNet(Helper):
     """
     __DEFAULT_DATA_DIR = "./data_tornet"
     __CATALOG = "https://zenodo.org/records/12636522/files/catalog.csv?download=1"
-    __LINKS =  [
-            "https://zenodo.org/records/12636522/files/tornet_2013.tar.gz?download=1",
-            "https://zenodo.org/records/12637032/files/tornet_2014.tar.gz?download=1",
-            "https://zenodo.org/records/12655151/files/tornet_2015.tar.gz?download=1",
-            "https://zenodo.org/records/12655179/files/tornet_2016.tar.gz?download=1",
-            "https://zenodo.org/records/12655183/files/tornet_2017.tar.gz?download=1",
-            "https://zenodo.org/records/12655187/files/tornet_2018.tar.gz?download=1",
-            "https://zenodo.org/records/12655716/files/tornet_2019.tar.gz?download=1",
-            "https://zenodo.org/records/12655717/files/tornet_2020.tar.gz?download=1",
-            "https://zenodo.org/records/12655718/files/tornet_2021.tar.gz?download=1",
-            "https://zenodo.org/records/12655719/files/tornet_2022.tar.gz?download=1",
-        ]
-        
+    __YEARS = {
+        2013: "https://zenodo.org/records/12636522/files/tornet_2013.tar.gz?download=1",
+        2014: "https://zenodo.org/records/12637032/files/tornet_2014.tar.gz?download=1",
+        2015: "https://zenodo.org/records/12655151/files/tornet_2015.tar.gz?download=1",
+        2016: "https://zenodo.org/records/12655179/files/tornet_2016.tar.gz?download=1",
+        2017: "https://zenodo.org/records/12655183/files/tornet_2017.tar.gz?download=1",
+        2018: "https://zenodo.org/records/12655187/files/tornet_2018.tar.gz?download=1",
+        2019: "https://zenodo.org/records/12655716/files/tornet_2019.tar.gz?download=1",
+        2020: "https://zenodo.org/records/12655717/files/tornet_2020.tar.gz?download=1",
+        2021: "https://zenodo.org/records/12655718/files/tornet_2021.tar.gz?download=1",
+        2022: "https://zenodo.org/records/12655719/files/tornet_2022.tar.gz?download=1",
+    }
+
     def __init__(self, data_dir: str = None):
         """
         Initializes the TorNet object with options to download raw data from Zenodo or use an existing bucket.
         
         Args:
             data_dir (str, optional): Directory to store downloaded data. Defaults to None.
-            partial (bool, optional): If True, only the first dataset will be downloaded. Defaults to True.
-            raw (bool, optional): If True, downloads data directly from Zenodo instead of the bucket. Defaults to False.
         """
         data_dir = Path(data_dir or self.__DEFAULT_DATA_DIR)
 
@@ -58,27 +56,33 @@ class TorNet(Helper):
 
         return df
     
-    def download(self, partial: bool = True, output_dir: str = None) -> bool:
+    def download(self, year: Union[int, List[int], None] = None, output_dir: str = None) -> bool:
         """
-        Downloads TorNet data based on the specified settings.
-        
-        If `raw` is True, it fetches data directly from Zenodo links. Otherwise, it retrieves from an S3 bucket.
-        If `partial` is True, only the first dataset is downloaded; otherwise, the entire dataset is retrieved.
+        Downloads TorNet data for a specific year or list of years.
         
         Args:
-            output_dir (str, optional): Directory where the data will be stored. Defaults to "TorNet_data".
+            year (int, list of int, optional): Year or list of years to download. If None, downloads all years.
+            output_dir (str, optional): Directory to store the downloaded files. Defaults to class data_dir.
         
         Returns:
-            bool: True if download is successful, False otherwise.
+            bool: True if download succeeds, False otherwise.
         """
-        logging.info("Starting download process with raw=%s, partial=%s", self.raw, self.partial)
+        logging.info("Starting download process")
 
-        if not output_dir: 
+        if not output_dir:
             output_dir = self.data_dir
-            
-        if partial:
-            logging.info("Downloading single file from bucket")
-            return super().download(self.__LINKS[0], output_dir=output_dir)
 
-        logging.info("Downloading full dataset from bucket")
-        return super().download(self.__LINKS, output_dir=output_dir)
+        # Determine which years to download
+        if year is None:
+            urls = list(self.__YEARS.values())
+        elif isinstance(year, int):
+            urls = [self.__YEARS.get(year)]
+        else:
+            urls = [self.__YEARS.get(y) for y in year if y in self.__YEARS]
+
+        if not urls or any(u is None for u in urls):
+            logging.error("Invalid year(s) specified for download.")
+            return False
+
+        return super().download(urls, output_dir=output_dir)
+
