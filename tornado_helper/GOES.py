@@ -44,6 +44,7 @@ class GOES(Helper):
     """
 
     __DEFAULT_DATA_DIR = "./data_goes"
+    __CATALOG = "https://f000.backblazeb2.com/file/TornadoPrediction-GOES/goes.csv"
     __GOES_BUCKETS = {
         "east": "noaa-goes16",   # Eastern U.S.
         "west": "noaa-goes17",   # Western U.S.
@@ -88,8 +89,7 @@ class GOES(Helper):
             ValueError: If the CSV cannot be parsed or is missing columns.
         """
         logging.info("Loading GOES catalog from CSV...")
-        url = "https://raw.githubusercontent.com/meyersa/tornado_helper/refs/heads/main/datasets/goes.csv"
-        df = pd.read_csv(url, parse_dates=["datetime"])
+        df = pd.read_csv(self.__CATALOG, parse_dates=["datetime"])
         logging.debug(f"Loaded {len(df)} records from CSV")
 
         if year is None:
