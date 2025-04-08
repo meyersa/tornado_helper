@@ -316,77 +316,94 @@ class Helper:
             subprocess.CalledProcessError: If the aria2c process fails.
             Exception: If an unexpected error occurs.
         """
-        # Ensure Aria exists
         self._check_dependency("aria2c")
-
-        # Ensure Aria is started
         self._start_aria2()
 
-        # Set output dir to default
         if not output_dir:
             output_dir = self.data_dir
 
         if isinstance(links, str):
-            links = list([links])
+            links = [links]
 
         if bucket:
-            links = [
-                f"{self.__DEFAULT_PROXY_URL}/file/{bucket}/{link}" for link in links
-            ]
+            links = [f"{self.__DEFAULT_PROXY_URL}/file/{bucket}/{link}" for link in links]
 
         try:
             logging.info(f"Downloading {len(links)} files with Aria2")
-            aria_downloads = self.aria2.add_uris(links, self.__DEFAULT_ARIA_OPTIONS)
 
-            # Wait for total length to be complete
-            while not aria_downloads.total_length:
-                time.sleep(1)
-                aria_downloads.update()
-
-            logging.info(f"Downloading {aria_downloads.total_length} bytes")
-            pbar = tqdm(total=aria_downloads.total_length, unit="B", unit_scale=True)
-
-            # Progress Bar for tracking download
-            while not aria_downloads.is_complete:
-                time.sleep(1)
-                aria_downloads.update()
-                pbar.update(aria_downloads.completed_length - pbar.n)
-
-            # End progress bar
-            pbar.close()
-
-            # Output
-            downloaded_files = [
-                str(aria_path)
-                for aria_path in self.aria2.get_download(
-                    aria_downloads.gid
-                ).root_files_paths
+            downloads = [
+                self.aria2.add_uris([link], self.__DEFAULT_ARIA_OPTIONS) for link in links
             ]
 
-            logging.info(f"Successfully downloaded {len(downloaded_files)} files")
+            logging.debug("Added links to Aria")
+            logging.debug("Calculating download time...")
 
+            # Wait for total lengths to be populated
+            total_size = 0
+            while True:
+                total_size = 0
+                all_ready = True
+                for dl in downloads:
+                    dl.update()
+                    if dl.total_length == 0:
+                        all_ready = False
+                    total_size += dl.total_length
+                if all_ready:
+                    break
+                time.sleep(1)
+
+            logging.debug("Tracking progress...")
+
+            pbar = tqdm(total=total_size, unit="B", unit_scale=True)
+            downloaded_files = []
+            prev_total = 0
+            while True:
+                current_total = sum(dl.completed_length for dl in downloads)
+                pbar.update(current_total - prev_total)
+                prev_total = current_total
+
+                if all(dl.is_complete for dl in downloads):
+                    break
+                time.sleep(1)
+                for dl in downloads:
+                    dl.update()
+
+            pbar.close()
+
+            # Increased Logic here
+            for dl in downloads:
+                dl.update()
+                files = [str(f) for f in dl.files]
+                downloaded_files.extend(files)
+                if not unzip:
+                    for f in files:
+                        dest = os.path.join(output_dir, os.path.basename(f))
+                        os.makedirs(output_dir, exist_ok=True)
+                        
+                        # Handle duplicates
+                        if os.path.exists(dest):
+                            os.remove(dest)
+                        shutil.move(f, dest)
+                    
             if unzip:
                 logging.info("Unzipping files...")
                 return self._unzip(downloaded_files, output_dir)
 
-            logging.info(f"Moving downloaded files to output dir {output_dir}")
-            self.aria2.get_download(aria_downloads.gid).move_files(output_dir)
-
-            # New output files
             downloaded_files = [
-                os.path.join(output_dir, os.path.basename(dl_file))
-                for dl_file in downloaded_files
+                os.path.join(output_dir, os.path.basename(f)) for f in downloaded_files
             ]
 
+            logging.info(f"Successfully downloaded {len(downloaded_files)} files")
             return downloaded_files
 
         except subprocess.CalledProcessError as e:
             logging.error(f"aria2c failed with exit status {e.returncode}: {e}")
-            raise
+            raise 
+        
         except Exception as e:
             logging.error(f"Unexpected error during download: {e}")
-            raise
-
+            raise 
+        
     def sync(
         self,
         application_key: str,
