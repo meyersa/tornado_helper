@@ -53,6 +53,13 @@ class GOES(Helper):
     __SENSOR = "ABI-L2-MCMIPC"
 
     def __init__(self, data_dir=None):
+        """
+        Initializes the GOES class.
+
+        Args:
+            data_dir (str, optional): Directory where GOES data is stored.
+                Defaults to None, which uses the default directory.
+        """
         data_dir = Path(data_dir or self.__DEFAULT_DATA_DIR)
         logging.info(f"GOES initialized at {data_dir}")
         super().__init__(data_dir)
@@ -73,7 +80,15 @@ class GOES(Helper):
             ValueError: If the CSV file can't be read or is missing columns.
         """
         logging.info(f"Fetching GOES catalog (raw={raw}) for year(s): {year}")
-        return self._build_catalog_from_s3(year) if raw else self._load_catalog_from_csv(year)
+        
+        if raw:
+            catalog = self._build_catalog_from_s3(year)
+
+        else: 
+            catalog = self._load_catalog_from_csv(year)
+
+        logging.info(f"Returning GOES catalog with {len(catalog)} entries")
+        return  catalog
 
     def _load_catalog_from_csv(self, year: Union[int, List[int], None] = None) -> pd.DataFrame:
         """

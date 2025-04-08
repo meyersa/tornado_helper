@@ -50,6 +50,8 @@ class TorNet(Helper):
         Returns: 
             pd.Dataframe of csv
         """
+        logging.info(f"Fetching TorNet catalog for year(s): {year}")
+
         file_paths = super().download(self.__CATALOG)
         df = pd.read_csv(file_paths[0])
 
@@ -60,6 +62,7 @@ class TorNet(Helper):
             elif isinstance(year, list):
                 df = df[df['Year'].isin(year)]
 
+        logging.info(f"Returning GOES catalog with {len(df)} entries")
         return df
     
     def download(self, year: Union[int, List[int], None] = None, output_dir: str = None) -> bool:
