@@ -51,9 +51,7 @@ class TorNet(Helper):
             pd.Dataframe of csv
         """
         logging.info(f"Fetching TorNet catalog for year(s): {year}")
-
-        file_paths = super().download(self.__CATALOG)
-        df = pd.read_csv(file_paths[0])
+        df = pd.read_csv(self.__CATALOG)
 
         if year is not None:
             if isinstance(year, int):
