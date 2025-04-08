@@ -118,7 +118,7 @@ class GOES(Helper):
             f"Filtered catalog to {len(filtered)} records for year(s): {year}")
         return filtered
 
-    def _build_catalog_from_s3(self, year: Union[int, List[int], None]) -> pd.DataFrame:
+    def _build_catalog_from_s3(self, year: Union[int, List[int], None] = None) -> pd.DataFrame:
         """
         Builds a catalog by scanning satellite files on S3 and extracting only
         basic metadata (filename, time, region). Does not extract lat/lon.
