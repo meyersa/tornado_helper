@@ -51,14 +51,15 @@ class TorNet(Helper):
             pd.Dataframe of csv
         """
         logging.info(f"Fetching TorNet catalog for year(s): {year}")
-        df = pd.read_csv(self.__CATALOG)
+        
+        df = pd.read_csv(self.__CATALOG, parse_dates=["start_time", "end_time"])
 
         if year is not None:
             if isinstance(year, int):
-                df = df[df['Year'] == year]
+                df = df[df['start_time'].dt.year == year]
 
             elif isinstance(year, list):
-                df = df[df['Year'].isin(year)]
+                df = df[df['start_time'].dt.year.isin(year)]
 
         logging.info(f"Returning GOES catalog with {len(df)} entries")
         return df
