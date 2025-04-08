@@ -2,6 +2,7 @@ import unittest
 from tornado_helper import GOES
 import logging
 import os 
+import pandas as pd 
 
 class test_goes(unittest.TestCase):
     @classmethod
@@ -9,15 +10,13 @@ class test_goes(unittest.TestCase):
         logging.info("Starting GOES Tests")
 
         logging.debug("Loading GOES class")
-        cls.GOES = GOES(partial=True)
+        cls.GOES = GOES()
 
     def test_instance(self): 
         self.assertTrue(os.path.exists(self.GOES.data_dir))
 
     def test_catalog(self): 
-        self.GOES._tornet_catalog()
-        self.assertTrue(os.path.exists(os.path.join(self.GOES.data_dir, "catalog.csv")))       
+        catalog = self.GOES.catalog()
 
-    def test_generate_links(self):
-        links = self.GOES.generate_links(2017)         
-        self.assertTrue(len(links) > 10)
+        self.assertIsInstance(catalog, pd.DataFrame)   
+        self.assertGreater(len(catalog), 100000)
