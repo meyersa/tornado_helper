@@ -82,7 +82,7 @@ class test_helper(unittest.TestCase):
 
         logging.debug("Unzipping file")
         unzipped = self.Helper._unzip(tar_zip)[0]
-        self.assertEqual(unzipped, f"{str(self.Helper.data_dir)}\{tar_raw}")
+        self.assertEqual(unzipped, os.path.join(str(self.Helper.data_dir), tar_raw))
 
         logging.debug("Opening file to check contents")
         with open(unzipped) as f: 
