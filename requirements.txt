@@ -8,4 +8,6 @@ pandas
 pyproj
 netcdf4
 xarray
+h5py
 folium
+ipywidgets

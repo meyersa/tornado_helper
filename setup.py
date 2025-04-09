@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="tornado_helper",
-    version="2.2.0",
+    version="2.2.1",
     packages=find_packages(),
     install_requires=[
         "requests",
@@ -15,7 +15,9 @@ setup(
         "pyproj",
         "netcdf4",
         "xarray",
-        "folium"
+        "h5py",
+        "folium",
+        "ipywidgets"
     ],
     author="August Meyers",
     description="A helper package for uploading and downloading Tornado training data",
