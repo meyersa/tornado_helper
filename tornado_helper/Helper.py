@@ -6,7 +6,7 @@ import subprocess
 import shutil
 import zipfile
 import tarfile
-from tqdm import tqdm
+from tqdm.auto import tqdm
 from typing import List, Optional, Union
 from b2sdk.v2 import InMemoryAccountInfo, B2Api, AuthInfoCache, Bucket
 from urllib.parse import urlparse
@@ -354,12 +354,14 @@ class Helper:
 
             logging.debug("Tracking progress...")
 
-            pbar = tqdm(total=total_size, unit="B", unit_scale=True)
+            pbar = tqdm(total=total_size, unit="B", unit_scale=True, desc="Aria Download", leave=False)
+
             downloaded_files = []
             prev_total = 0
             while True:
                 current_total = sum(dl.completed_length for dl in downloads)
                 pbar.update(current_total - prev_total)
+
                 prev_total = current_total
 
                 if all(dl.is_complete for dl in downloads):
