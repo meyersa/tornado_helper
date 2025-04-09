@@ -1,5 +1,7 @@
 import gc
+from multiprocessing import Pool
 import os
+import h5py
 import numpy as np
 from pyproj import Proj
 from .Helper import Helper
@@ -10,7 +12,7 @@ from typing import List, Union
 from .TorNet import TorNet
 from .GOES import GOES
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from tqdm import tqdm
+from tqdm.auto import tqdm
 import xarray as xr
 from itertools import islice
 
@@ -45,6 +47,9 @@ class Combined(Helper):
 
         self.GOES = GOES()
         self.TorNet = TorNet()
+
+        # Prevent for hdf5
+        np.seterr(all='ignore')
 
         logging.info(f"Combined initialized at {data_dir}")
         super().__init__(data_dir)
@@ -200,57 +205,33 @@ class Combined(Helper):
 
         logging.debug(f"Total unique GOES files to process: {len(unique_files)}")
 
-        for file_chunk in self._chunked_iterable(
-            unique_files["GOES_FILENAME"], chunk_size
+        total_chunks = (len(unique_files["GOES_FILENAME"]) + chunk_size - 1) // chunk_size
+        for file_chunk in tqdm(
+            self._chunked_iterable(unique_files["GOES_FILENAME"], chunk_size),
+            total=total_chunks,
+            desc="Chunks"
         ):
             chunk_df = unique_files[unique_files["GOES_FILENAME"].isin(file_chunk)]
-            logging.info(f"Processing chunk with {len(chunk_df)} files")
-
             downloaded_paths = self.download(chunk_df)
             download_map = dict(zip(chunk_df["GOES_FILENAME"], downloaded_paths))
 
-            def process_file(filename):
-                proc_files = []
-                try:
-                    logging.debug(f"Processing file: {filename}")
-                    dname = download_map[filename]
-                    matches = df[df["GOES_FILENAME"] == filename]
-                    ds = xr.open_dataset(dname)
+            logging.debug("Downloaded... Finding matches")
 
-                    for _, match_row in matches.iterrows():
-                        lat, lon = match_row["lat"], match_row["lon"]
-                        target_dname = os.path.join(
-                            self.data_dir, match_row["filename"]
-                        )
+            args_list = []
+            for filename in download_map:
+                matches = df[df["GOES_FILENAME"] == filename]
+                args_list.append((filename, matches, download_map[filename], self.data_dir))
 
-                        chopped = self._clean_goes_dataset(ds)
-                        clipped = self._clip_ds_to_coord(chopped, lat, lon)
+            logging.debug("Found matches... Processing")
 
-                        if clipped is not None:
-                            self._safe_save(clipped, target_dname)
-                            proc_files.append((match_row.name, target_dname))
-                            logging.debug(f"Saved clipped file to: {target_dname}")
-                        else:
-                            logging.warning(
-                                f"Clipping failed for {filename} at ({lat}, {lon})"
-                            )
+            # Manually update tqdm inside multiprocessing
+            with Pool(processes=min(max_workers, os.cpu_count())) as pool:
+                with tqdm(total=len(args_list), desc="Processing files", leave=False) as pbar:
+                    for result in pool.imap_unordered(Combined._safe_process_file, args_list):
+                        results.extend(result)
+                        pbar.update()
 
-                    ds.close()
-                    gc.collect()
-                    self._delete(dname)
-                    logging.debug(f"Cleaned up: {filename}")
-
-                except Exception as e:
-                    logging.error(f"Failed processing {filename}: {e}")
-
-                return proc_files
-
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                futures = [
-                    executor.submit(process_file, fname) for fname in download_map
-                ]
-                for f in as_completed(futures):
-                    results.extend(f.result())
+            logging.debug("Finished chunk")
 
         for idx, proc_fname in results:
             df.at[idx, "PROC_FILENAME"] = proc_fname
@@ -258,6 +239,25 @@ class Combined(Helper):
         logging.info(f"Finished processing. {len(results)} files written.")
         return df
 
+    @staticmethod
+    def _is_valid_hdf5(filepath: str) -> bool:
+        """
+        Checks if a file is a valid, readable HDF5/NetCDF file.
+        
+        Args: 
+            filepath (str): Path to file to check
+            
+        Returns: 
+            bool: True if valid, false if not
+        """
+        try:
+            with h5py.File(filepath, "r"):
+                return True
+            
+        except Exception as e:
+            logging.error(f"Invalid HDF5 file: {filepath} — {e}")
+            return False
+    
     @staticmethod
     def _enrich_row(row: pd.Series, goes_df: pd.DataFrame) -> Union[dict, None]:
         """
@@ -448,3 +448,66 @@ class Combined(Helper):
         finally:
             clipped.close()
             gc.collect()
+
+    @staticmethod
+    def _safe_process_file(args):
+        """
+        Safely processes a single GOES NetCDF file in isolation.
+
+        This method:
+        - Validates the file is accessible and a readable HDF5 format
+        - Opens it with xarray (inside a safe context)
+        - Cleans and clips the dataset for each matching tornado row
+        - Saves the processed subset to disk
+        - Deletes the original file after processing
+
+        Args:
+            args (tuple): A 4-element tuple:
+                - filename (str): GOES filename (key only, not full path)
+                - match_rows (pd.DataFrame): Subset of rows in the catalog that map to this file
+                - dname (str): Full path to the downloaded NetCDF file
+                - data_dir (str): Output directory to store processed clipped data
+
+        Returns:
+            List[Tuple[int, str]]: List of (row_index, processed_filepath) tuples
+                                for successfully clipped and saved files.
+        """
+        filename, match_rows, dname, data_dir = args
+        import xarray as xr
+        import os
+        import gc
+        import logging
+        import traceback
+
+        results = []
+
+        try:
+            if not os.path.exists(dname):
+                logging.error(f"File does not exist: {dname}")
+                return []
+
+            if not Combined._is_valid_hdf5(dname):
+                logging.error(f"Corrupted or unreadable file: {dname}")
+                return []
+
+            with xr.open_dataset(dname) as ds:
+                for _, match_row in match_rows.iterrows():
+                    lat, lon = match_row["lat"], match_row["lon"]
+                    target_dname = os.path.join(data_dir, match_row["filename"])
+
+                    chopped = Combined._clean_goes_dataset(ds)
+                    clipped = Combined._clip_ds_to_coord(chopped, lat, lon)
+
+                    if clipped is not None:
+                        Combined._safe_save(clipped, target_dname)
+                        results.append((match_row.name, target_dname))
+                    else:
+                        logging.warning(f"Failed to clip {filename} at ({lat}, {lon})")
+
+            ds.close()
+            gc.collect()
+            os.remove(dname)
+
+        except Exception as e:
+            logging.error(f"[PROCESS FAIL] {filename}: {e}\n{traceback.format_exc()}")
+        return results
