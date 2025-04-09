@@ -234,8 +234,8 @@ class Combined(Helper):
             logging.debug("Finished chunk")
 
         for idx, proc_fname in results:
-            df.at[idx, "PROC_FILENAME"] = proc_fname
-
+            df.loc[idx, "PROC_FILENAME"] = proc_fname
+            
         logging.info(f"Finished processing. {len(results)} files written.")
         return df
 
@@ -383,21 +383,24 @@ class Combined(Helper):
             xarray.Dataset: Cleaned dataset with only relevant data.
         """
         logging.debug("Cleaning GOES dataset")
+
+        # Always keep these core variables
+        vars_to_keep = {
+            var for var in ds.data_vars
+            if var.startswith("CMI_") or var.startswith("DQF_")
+        }.union({
+            "goes_imager_projection",
+            "time_bounds",
+            "x_image_bounds",
+            "y_image_bounds",
+        })
+
+        # Drop all other non-essential variables
         vars_to_drop = [
-            var
-            for var in ds.data_vars
-            if (
-                var.startswith("CMI_")
-                or var.startswith("DQF_")
-                or var.startswith("outlier_pixel_count_")
-                or var.startswith("min_")
-                or var.startswith("max_")
-                or var.startswith("mean_")
-                or var.startswith("std_dev_")
-                or "uncorrectable" in var
-                or "container" in var
-            )
+            var for var in ds.data_vars
+            if var not in vars_to_keep
         ]
+
         logging.debug(f"Dropping variables: {vars_to_drop}")
         return ds.drop_vars(vars_to_drop)
 
