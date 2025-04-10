@@ -263,7 +263,9 @@ class Helper:
             logging.debug("Aria is not running, starting")
 
             subprocess.Popen(
-                ["aria2c", "--enable-rpc", f"--rpc-listen-port={ARIA_PORT}"]
+                ["aria2c", "--enable-rpc", f"--rpc-listen-port={ARIA_PORT}"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
             )
 
             # Wait for aria2c to be ready
