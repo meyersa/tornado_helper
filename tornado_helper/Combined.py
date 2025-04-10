@@ -178,7 +178,7 @@ class Combined(Helper):
         return processed_df
 
     def _process_all_goes_files(
-        self, df: pd.DataFrame, chunk_size: int = 10, max_workers: int = 10
+        self, df: pd.DataFrame, chunk_size: int = 10, max_workers: int = 10, bypass: bool = False
     ) -> pd.DataFrame:
         """
         Downloads, processes, and clips GOES files for all rows in a given DataFrame.
@@ -190,6 +190,7 @@ class Combined(Helper):
             df (pd.DataFrame): The catalog DataFrame containing GOES_FILENAME, GOES_SATELLITE, lat, lon, and filename columns.
             chunk_size (int): Number of GOES files to download/process per batch. Defaults to 10.
             max_workers (int): Number of parallel threads for file processing. Defaults to 10.
+            bypass: Collect files on disk and don't re-process 
 
         Returns:
             pd.DataFrame: Updated DataFrame with the "PROC_FILENAME" column filled in.
@@ -205,6 +206,13 @@ class Combined(Helper):
 
         logging.debug(f"Total unique GOES files to process: {len(unique_files)}")
 
+        if bypass: 
+            df = self.drop_existing_files(df)
+            
+        if len(df) == 0: 
+            logging.info("Dataframe is empty, not moving on to processing and downloading")
+            return df 
+        
         total_chunks = (len(unique_files["GOES_FILENAME"]) + chunk_size - 1) // chunk_size
         for file_chunk in tqdm(
             self._chunked_iterable(unique_files["GOES_FILENAME"], chunk_size),
@@ -239,6 +247,27 @@ class Combined(Helper):
         logging.info(f"Finished processing. {len(results)} files written.")
         return df
 
+    def drop_existing_files(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Drops all existing paths in a dataframe
+
+        Useful for when rerunning build in the case of initial fillup of the dataframe so it can be repeadedly rerun
+
+        Args:
+            df (pd.DataFrame): The datafarme to drop entries from
+
+        Returns:
+            pd.DataFrame: Updated DataFrame with removed entries.
+        """
+        logging.info(f"Dropping existing files, starting length {len(df)}")
+        
+        ddf = df[~df["filename"].apply(
+            lambda filename: os.path.exists(os.path.join(self.data_dir, filename))
+        )]
+
+        logging.info(f"Finished dropping, final length {len(ddf)}")
+        return ddf 
+    
     @staticmethod
     def _is_valid_hdf5(filepath: str) -> bool:
         """
