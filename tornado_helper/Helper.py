@@ -254,19 +254,30 @@ class Helper:
         logging.debug("Checking if Aria2 is running as server")
 
         try:
-            logging.debug("Polling socket")
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.connect((ARIA_ADDRESS, ARIA_PORT))
             s.close()
-
             logging.debug("Aria is running, returning")
             return
-
         except Exception:
             logging.debug("Aria is not running, starting")
-            return subprocess.Popen(
+
+            subprocess.Popen(
                 ["aria2c", "--enable-rpc", f"--rpc-listen-port={ARIA_PORT}"]
             )
+
+            # Wait for aria2c to be ready
+            for _ in range(10):
+                try:
+                    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    s.connect((ARIA_ADDRESS, ARIA_PORT))
+                    s.close()
+                    logging.debug("Aria2 server is now running")
+                    return
+                except Exception:
+                    time.sleep(0.5)
+
+            raise RuntimeError("Failed to start aria2c RPC server")
 
     def _check_aria2_status(
         self, download: Union[aria2p.Download, List[aria2p.Download]]
