@@ -31,8 +31,8 @@ class Helper:
         __TEMP_DIR (Path): Path to a temporary directory for intermediate file handling.
     """
 
-    __DEFAULT_PROXY_URL = "https://bbproxy.meyerstk.com"
-    __DEFAULT_ENDPOINT_URL = "https://s3.us-west-000.backblazeb2.com"
+    _DEFAULT_PROXY_URL = "https://bbproxy.meyerstk.com"
+    _DEFAULT_ENDPOINT_URL = "https://s3.us-west-000.backblazeb2.com"
     __DEFAULT_DATA_DIR = "./data_helper"
     __TEMP_DIR = tempfile.mkdtemp()
 
@@ -339,16 +339,17 @@ class Helper:
             links = [links]
 
         if bucket:
-            links = [f"{self.__DEFAULT_PROXY_URL}/file/{bucket}/{link}" for link in links]
+            links = [f"{self._DEFAULT_PROXY_URL}/file/{bucket}/{link}" for link in links]
 
         try:
             logging.info(f"Downloading {len(links)} files with Aria2")
+            logging.debug(f"URLs: {links}")
 
             downloads = [
                 self.aria2.add_uris([link], self.__DEFAULT_ARIA_OPTIONS) for link in links
             ]
 
-            logging.debug("Added links to Aria")
+            logging.debug(f"Added links to Aria {downloads}")
             logging.debug("Calculating download time...")
 
             # Wait for total lengths to be populated
@@ -359,6 +360,8 @@ class Helper:
                 for dl in downloads:
                     dl.update()
                     if dl.total_length == 0:
+                        logging.debug("Size is zero, sleeping...")
+
                         all_ready = False
                     total_size += dl.total_length
                 if all_ready:

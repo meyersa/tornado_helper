@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="tornado_helper",
-    version="2.2.3",
+    version="2.3.0",
     packages=find_packages(),
     install_requires=[
         "requests",

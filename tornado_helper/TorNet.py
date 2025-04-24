@@ -98,6 +98,6 @@ class TorNet(Helper):
             return False
 
         urls = [
-            f"{self.__DEFAULT_PROXY_URL}/file/{self.__BUCKET}/{file}" for file in files
+            f"{self._DEFAULT_PROXY_URL}/file/{self.__BUCKET}/{file}" for file in files
         ]
         return super().download(urls, output_dir=output_dir)

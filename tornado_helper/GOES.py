@@ -45,11 +45,19 @@ class GOES(Helper):
 
     __DEFAULT_DATA_DIR = "./data_goes"
     __CATALOG = "https://f000.backblazeb2.com/file/TornadoPrediction-GOES/goes.csv"
+    __BUCKET = "TornadoPrediction-GOES"
+    __YEARS = {
+        2017: "goes_2017.tar.gz",
+        2018: "goes_2018.tar.gz",
+        2019: "goes_2019.tar.gz",
+        2020: "goes_2020.tar.gz",
+        2021: "goes_2021.tar.gz",
+        2022: "goes_2022.tar.gz"
+    }
     __GOES_BUCKETS = {
         "east": "noaa-goes16",   # Eastern U.S.
         "west": "noaa-goes17",   # Western U.S.
     }
-    __YEARS = [2017, 2018, 2019, 2020, 2021, 2022]
     __SENSOR = "ABI-L2-MCMIPC"
 
     def __init__(self, data_dir=None):
@@ -132,7 +140,7 @@ class GOES(Helper):
         logging.info("Building simplified GOES catalog from S3 (no lat/lon)...")
 
         if year is None:
-            years = self.__YEARS
+            years = self.__YEARS.keys()
         elif isinstance(year, int):
             years = [year]
         else:
@@ -199,21 +207,35 @@ class GOES(Helper):
             all_objects.extend(contents)
         return all_objects
 
-    def download(self, nc_filename: str, bucket: str, output_dir=None) -> str:
+    def download(self, year: Union[int, List[int], None] = None, output_dir: str = None) -> bool:
         """
-        Downloads a NetCDF file from the specified S3 bucket.
-
+        Downloads GOES data for a specific year or list of years.
+        
         Args:
-            nc_filename (str): NetCDF filename to download.
-            bucket (str): S3 bucket name.
-            output_dir (str or Path, optional): Directory to save the file.
-
+            year (int, list of int, optional): Year or list of years to download. If None, downloads all years.
+            output_dir (str, optional): Directory to store the downloaded files. Defaults to class data_dir.
+        
         Returns:
-            str: Path to the downloaded file.
-
-        Raises:
-            Exception: If the download fails.
+            bool: True if download succeeds, False otherwise.
         """
-        logging.debug(f"Downloading file {nc_filename} from bucket {bucket}")
-        url = f"https://{bucket}.s3.amazonaws.com/{nc_filename}"
-        return super().download(url, output_dir=output_dir)
+        logging.info("Starting download process")
+
+        if not output_dir:
+            output_dir = self.data_dir
+
+        # Determine which years to download
+        if year is None:
+            files = list(self.__YEARS.values())
+        elif isinstance(year, int):
+            files = [self.__YEARS.get(year)]
+        else:
+            files = [self.__YEARS.get(y) for y in year if y in self.__YEARS]
+
+        if not files or any(f is None for f in files):
+            logging.error("Invalid year(s) specified for download.")
+            return False
+
+        urls = [
+            f"{self._DEFAULT_PROXY_URL}/file/{self.__BUCKET}/{file}" for file in files
+        ]
+        return super().download(urls, output_dir=output_dir)

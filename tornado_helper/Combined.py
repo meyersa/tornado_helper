@@ -33,7 +33,8 @@ class Combined(Helper):
     """
 
     __DEFAULT_DATA_DIR = "./data_combined"
-    __CATALOG = "https://f000.backblazeb2.com/file/TornadoPrediction-GOES/combined.csv"
+    __CATALOG = "https://f000.backblazeb2.com/file/TornadoPrediction-Combined/combined.csv"
+    __YEARS = [2017, 2018, 2019, 2020, 2021, 2022] # Maching years
 
     def __init__(self, data_dir: str = None) -> None:
         """
@@ -79,7 +80,40 @@ class Combined(Helper):
         logging.info(f"Returning Combined catalog with {len(catalog)} entries")
         return catalog
 
-    def download(self, rows: pd.DataFrame, output_dir=None):
+    def download(self, year: Union[int, List[int], None] = None, output_dir: str = None) -> bool:
+        """
+        Downloads Combined data for a specific year or list of years.
+        
+        Args:
+            year (int, list of int, optional): Year or list of years to download. If None, downloads all years.
+            output_dir (str, optional): Directory to store the downloaded files. Defaults to class data_dir.
+        
+        Returns:
+            bool: True if download succeeds, False otherwise.
+        """
+        logging.info("Starting download process")
+
+        if not output_dir:
+            output_dir = self.data_dir
+
+        # Determine which years to download
+        if year is None:
+            year = self.__YEARS
+
+        output = list() 
+        
+        logging.info("Downloading Combined data from GOES (1/2)")
+        goes_files = self.GOES.download(year)
+        output.append(goes_files)
+
+        logging.info("Download Combined data from TorNet (2/2)")
+        tornet_files = self.TorNet.download(year)
+        output.append(tornet_files)
+        
+        logging.info("Finished download")
+        return output
+    
+    def _sat_download(self, rows: pd.DataFrame, output_dir=None):
         """
         Download multiple rows
         """
@@ -220,7 +254,7 @@ class Combined(Helper):
             desc="Chunks"
         ):
             chunk_df = unique_files[unique_files["GOES_FILENAME"].isin(file_chunk)]
-            downloaded_paths = self.download(chunk_df)
+            downloaded_paths = self._sat_download(chunk_df)
             download_map = dict(zip(chunk_df["GOES_FILENAME"], downloaded_paths))
 
             logging.debug("Downloaded... Finding matches")
